@@ -1461,27 +1461,56 @@ function LegalModal({ tr, kind, onClose }) {
         <div className="legal-body">
           {!isPrivacy && (
             <>
-              <p className="legal-intro">{tr('impressum_intro')}</p>
-              <h4>{tr('impressum_assoc')}</h4>
-              <p><strong>{tr('impressum_addr_lbl')} :</strong> {tr('impressum_addr')}</p>
-              <p><strong>{tr('impressum_resp_lbl')} :</strong> {tr('impressum_resp')}</p>
-              <p><strong>Email :</strong> <a href="mailto:finances@camasev.com" className="footer-link">{tr('impressum_email')}</a></p>
-              <p>{tr('impressum_register')}</p>
-              <p className="legal-disclaimer">{tr('impressum_disclaimer')}</p>
+              <p className="legal-intro">Conformément au § 5 TMG (Telemediengesetz) :</p>
+              <h4>CamAS e.V. (Cameroonian Association of Stuttgart and Environs e.V.)</h4>
+              <p><strong>Adresse :</strong> c/o IZ. Pfaffenwaldring 60, 70569 Stuttgart</p>
+              
+              <h4>Représentants légaux (Vorstand)</h4>
+              <p>
+                <strong>Président :</strong> Christian Siani<br />
+                <strong>Secrétaire général :</strong> Serge Kenfack<br />
+                <strong>Trésorier :</strong> Aurelien Ndjomo
+              </p>
+              
+              <h4>Contact</h4>
+              <p><strong>Email :</strong> <a href="mailto:info@camasev.com" className="footer-link">info@camasev.com</a></p>
+              <p><strong>Email (Finances/Paypal) :</strong> <a href="mailto:finances@camasev.com" className="footer-link">finances@camasev.com</a></p>
+              
+              <h4>Enregistrement</h4>
+              <p><strong>Registre des associations :</strong> Amtsgericht Stuttgart<br />
+              <strong>Numéro d'enregistrement :</strong> VR 720697</p>
+              
+              <p><strong>Numéro fiscal :</strong> Finanzamt Stuttgart - Steuer-Nr. 99015/30302</p>
+
+              <div className="legal-disclaimer">
+                <strong>Responsabilité pour les contenus (Disclaimer) :</strong><br/>
+                En tant que prestataire de services, nous sommes responsables de nos propres contenus sur ces pages selon les lois générales, conformément au § 7 al. 1 du TMG. Les informations fournies sur cette application sont destinées à l'organisation interne de la section sportive de la CamAS e.V.
+              </div>
             </>
           )}
           {isPrivacy && (
             <>
-              <p className="legal-intro">{tr('privacy_intro')}</p>
-              <h4>{tr('privacy_h_who')}</h4><p>{tr('privacy_who')}</p>
-              <h4>{tr('privacy_h_what')}</h4><p>{tr('privacy_what')}</p>
-              <h4>{tr('privacy_h_purpose')}</h4><p>{tr('privacy_purpose')}</p>
-              <h4>{tr('privacy_h_basis')}</h4><p>{tr('privacy_basis')}</p>
-              <h4>{tr('privacy_h_storage')}</h4><p>{tr('privacy_storage')}</p>
-              <h4>{tr('privacy_h_rights')}</h4><p>{tr('privacy_rights')}</p>
-              <h4>{tr('privacy_h_cookies')}</h4><p>{tr('privacy_cookies')}</p>
-              <h4>{tr('privacy_h_thirdparty')}</h4><p>{tr('privacy_thirdparty')}</p>
-              <h4>{tr('privacy_h_update')}</h4><p>{tr('privacy_update')}</p>
+              <p className="legal-intro">Déclaration de confidentialité (Datenschutzerklärung)</p>
+              
+              <h4>1. Responsable du traitement des données</h4>
+              <p>L'organisme responsable du traitement des données sur cette plateforme est :<br/>
+              <strong>SK Digital / CamAS e.V.</strong><br/>
+              Email : <a href="mailto:info@camasev.com" className="footer-link">info@camasev.com</a></p>
+              
+              <h4>2. Collecte et finalité des données</h4>
+              <p>L'application "CamAS Sport" est un outil interne. Les données collectées (noms, présences aux matchs, statistiques de jeu, suivi des amendes de retard) sont utilisées exclusivement pour l'organisation des activités sportives, la constitution des équipes et la gestion de la caisse de solidarité.</p>
+
+              <h4>3. Transmission des données</h4>
+              <p>Vos données personnelles ne sont ni vendues, ni transmises à des tiers à des fins commerciales. Elles sont accessibles uniquement aux membres de la section sportive et aux administrateurs de l'application.</p>
+
+              <h4>4. Cookies et stockage local (Local Storage)</h4>
+              <p>Pour des raisons techniques, cette application utilise le stockage local de votre appareil (ex: pour mémoriser votre choix de langue ou l'acceptation du bandeau d'information). Ce sont des données techniques strictement nécessaires au fonctionnement de l'application, aucune donnée de suivi publicitaire n'est utilisée.</p>
+
+              <h4>5. Hébergement</h4>
+              <p>L'application est hébergée sur des infrastructures cloud sécurisées. Les communications avec le serveur sont chiffrées (HTTPS).</p>
+
+              <h4>6. Vos droits (RGPD / DSGVO)</h4>
+              <p>Conformément au Règlement Général sur la Protection des Données (RGPD), vous disposez d'un droit d'accès, de rectification, de suppression et de limitation du traitement de vos données. Pour toute demande concernant votre profil joueur, veuillez contacter le responsable de l'application ou envoyer un email à <a href="mailto:info@camasev.com" className="footer-link">info@camasev.com</a>.</p>
             </>
           )}
         </div>

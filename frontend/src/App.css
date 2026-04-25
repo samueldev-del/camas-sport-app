@@ -63,11 +63,14 @@ h1, h2, h3, h4 { margin: 0; color: var(--ink); font-weight: 700; }
 table { width: 100%; border-collapse: collapse; }
 
 /* ---------- Tablet container ---------- */
+
+/* ---------- Conteneur principal ---------- */
 .app {
-  min-height: 100vh;
+  min-height: 100dvh; /* Utiliser dvh au lieu de vh pour les mobiles */
   padding: 20px;
   display: flex;
   justify-content: center;
+  align-items: stretch; /* Ajoute ceci pour que le conteneur central s'étire */
 }
 
 .tablet {
@@ -84,6 +87,7 @@ table { width: 100%; border-collapse: collapse; }
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1; /* Ajoute ceci pour qu'il remplisse tout l'espace de .app */
 }
 
 /* ---------- Header ---------- */
@@ -177,6 +181,7 @@ table { width: 100%; border-collapse: collapse; }
 }
 
 /* ---------- Content ---------- */
+/* ---------- Contenu ---------- */
 .content {
   padding: 22px;
   display: flex;
@@ -187,7 +192,7 @@ table { width: 100%; border-collapse: collapse; }
     repeating-linear-gradient(0deg,
       transparent 0, transparent 80px,
       rgba(46, 125, 50, 0.03) 80px, rgba(46, 125, 50, 0.03) 160px);
-  flex: 1;
+  flex: 1 0 auto; /* Très important : permet au contenu de grandir et de pousser le footer */
 }
 
 /* ---------- Grid layouts ---------- */
@@ -1431,13 +1436,13 @@ table { width: 100%; border-collapse: collapse; }
 .empty-row.small { padding: 8px !important; font-size: 0.82rem; }
 
 /* ================= RESPONSIVE ================= */
-@media (max-width: 900px) {
+@media (max-width: 720px) {
   .app { padding: 0; }
   .tablet {
     border: none;
     border-radius: 0;
     box-shadow: none;
-    min-height: 100dvh;
+    /* min-height supprimé ici */
   }
 
   /* === Mobile header: compact sticky bar with logo + title + tools === */

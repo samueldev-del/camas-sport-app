@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS matches (
   status        TEXT NOT NULL DEFAULT 'open'
                 CHECK (status IN ('open','closed','done')),
   notes         TEXT,
+  team_a_score  INT,
+  team_b_score  INT,
+  photo_url     TEXT,                       -- URL photo de l'équipe vainqueur (galerie publique)
+  winner_team   TEXT CHECK (winner_team IN ('A','B','draw')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

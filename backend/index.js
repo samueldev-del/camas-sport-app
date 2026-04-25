@@ -1,3 +1,19 @@
+// Modifier la date ou l'heure du match actuel (Admin)
+app.patch('/api/match/:id', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { match_date, kickoff_local } = req.body;
+  try {
+    if (match_date) {
+      await sql`UPDATE matches SET match_date = ${match_date} WHERE id = ${id}`;
+    }
+    if (kickoff_local) {
+      await sql`UPDATE matches SET kickoff_local = ${kickoff_local} WHERE id = ${id}`;
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur lors de la modification du match' });
+  }
+});
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -125,7 +141,8 @@ app.patch('/api/players/:id/pin', async (req, res) => {
   }
 });
 
-app.patch('/api/players/:id', async (req, res) => {
+// Modification d'un joueur (nom/rating) — RÉSERVÉ ADMIN
+app.patch('/api/players/:id', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { name, rating } = req.body;
   const rows = await sql`
@@ -138,7 +155,8 @@ app.patch('/api/players/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
-app.delete('/api/players/:id', async (req, res) => {
+// Suppression d'un joueur — RÉSERVÉ ADMIN (action destructive)
+app.delete('/api/players/:id', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   await sql`DELETE FROM players WHERE id = ${id}`;
   res.json({ ok: true });
@@ -337,15 +355,17 @@ app.get('/api/goals/:matchId', async (req, res) => {
   res.json(rows);
 });
 
-// Stats
+// Stats — incluent désormais la date de la dernière activité (traçabilité)
 app.get('/api/stats/scorers', async (_req, res) => {
   const rows = await sql`
     SELECT p.id, p.name,
            COALESCE(SUM(g.goals), 0)::int AS goals,
            COALESCE(SUM(g.assists), 0)::int AS assists,
-           COUNT(g.id)::int AS appearances
+           COUNT(g.id)::int AS appearances,
+           MAX(m.match_date) AS last_goal_date
     FROM players p
-    LEFT JOIN goals g ON g.player_id = p.id
+    LEFT JOIN goals g  ON g.player_id = p.id
+    LEFT JOIN matches m ON m.id = g.match_id AND g.goals > 0
     GROUP BY p.id
     ORDER BY goals DESC, assists DESC, p.name ASC
   `;
@@ -358,13 +378,26 @@ app.get('/api/stats/attendance', async (_req, res) => {
            COUNT(a.id)::int AS total,
            SUM(CASE WHEN a.is_late THEN 1 ELSE 0 END)::int AS lates,
            SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END)::int AS absences,
-           SUM(CASE WHEN a.status IN ('present','registered','late') THEN 1 ELSE 0 END)::int AS shows
+           SUM(CASE WHEN a.status IN ('present','registered','late') THEN 1 ELSE 0 END)::int AS shows,
+           MAX(CASE WHEN a.status IN ('present','registered','late') THEN m.match_date END) AS last_match_date
     FROM players p
     LEFT JOIN attendances a ON a.player_id = p.id
+    LEFT JOIN matches m     ON m.id = a.match_id
     GROUP BY p.id
     ORDER BY shows DESC, lates ASC, p.name ASC
   `;
   res.json(rows);
+});
+
+// Plage temporelle de la saison (1er match → aujourd'hui)
+app.get('/api/stats/season', async (_req, res) => {
+  try {
+    const [{ first, last, total }] = await sql`
+      SELECT MIN(match_date) AS first, MAX(match_date) AS last, COUNT(*)::int AS total
+      FROM matches WHERE status = 'done'
+    `;
+    res.json({ first, last, total });
+  } catch { res.json({ first: null, last: null, total: 0 }); }
 });
 
 // Fines / caisse — TOUT en admin only (lecture comprise : section privée)
@@ -530,6 +563,130 @@ app.get('/api/motm/last', async (_req, res) => {
   } catch {
     res.json(null);
   }
+});
+
+// ========================================================
+// HISTORIQUE DES MATCHS — résultats classés par dimanche
+// (lecture publique : tout le monde voit le score, personne ne le modifie)
+// ========================================================
+app.get('/api/match/history', async (_req, res) => {
+  try {
+    const matches = await sql`
+      SELECT id, match_date, team_a_score, team_b_score, photo_url, winner_team
+      FROM matches
+      WHERE status = 'done' AND team_a_score IS NOT NULL AND team_b_score IS NOT NULL
+      ORDER BY match_date DESC
+      LIMIT 30
+    `;
+    if (!matches.length) return res.json([]);
+    const ids = matches.map(m => m.id);
+    const goals = await sql`
+      SELECT g.match_id, g.player_id, g.goals, g.assists, p.name
+      FROM goals g JOIN players p ON p.id = g.player_id
+      WHERE g.match_id = ANY(${ids}) AND g.goals > 0
+      ORDER BY g.goals DESC
+    `;
+    const byMatch = goals.reduce((acc, g) => {
+      (acc[g.match_id] ||= []).push(g);
+      return acc;
+    }, {});
+    res.json(matches.map(m => ({ ...m, scorers: byMatch[m.id] || [] })));
+  } catch (e) {
+    console.error('history error', e);
+    res.json([]);
+  }
+});
+
+// ========================================================
+// PLANNING — calendrier admin : liste, création manuelle de matchs
+// ========================================================
+// Liste tous les matchs (passés + futurs) — ADMIN
+app.get('/api/match/calendar', requireAdmin, async (_req, res) => {
+  const rows = await sql`
+    SELECT id, match_date, kickoff_local, status, notes,
+           team_a_score, team_b_score, photo_url, winner_team
+    FROM matches
+    ORDER BY match_date DESC
+    LIMIT 60
+  `;
+  res.json(rows);
+});
+
+// Crée (ou récupère) un match pour une date donnée — ADMIN
+app.post('/api/match/schedule', requireAdmin, async (req, res) => {
+  const { date, kickoff = '10:00', notes = null } = req.body || {};
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Date invalide (YYYY-MM-DD requis)' });
+  }
+  try {
+    const existing = await sql`SELECT * FROM matches WHERE match_date = ${date} LIMIT 1`;
+    if (existing.length) return res.json({ ...existing[0], created: false });
+    const created = await sql`
+      INSERT INTO matches (match_date, kickoff_local, notes)
+      VALUES (${date}, ${kickoff}, ${notes})
+      RETURNING *
+    `;
+    res.json({ ...created[0], created: true });
+  } catch (e) {
+    console.error('schedule error', e);
+    res.status(500).json({ error: 'Erreur planification' });
+  }
+});
+
+// Supprime un match planifié (uniquement si pas encore "done") — ADMIN
+app.delete('/api/match/:id', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const [m] = await sql`SELECT status FROM matches WHERE id = ${id}`;
+    if (!m) return res.status(404).json({ error: 'Match introuvable' });
+    if (m.status === 'done') return res.status(400).json({ error: 'Match terminé, suppression interdite' });
+    await sql`DELETE FROM matches WHERE id = ${id}`;
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ========================================================
+// PHOTO + ÉQUIPE GAGNANTE — admin renseigne pour la galerie publique
+// ========================================================
+app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { photoUrl = null, winnerTeam = null } = req.body || {};
+  if (winnerTeam && !['A','B','draw'].includes(winnerTeam)) {
+    return res.status(400).json({ error: 'winnerTeam doit être A, B ou draw' });
+  }
+  if (photoUrl && !/^https?:\/\//i.test(photoUrl)) {
+    return res.status(400).json({ error: 'URL photo invalide (http/https requis)' });
+  }
+  try {
+    const rows = await sql`
+      UPDATE matches
+      SET photo_url   = ${photoUrl},
+          winner_team = ${winnerTeam}
+      WHERE id = ${id}
+      RETURNING id, match_date, team_a_score, team_b_score, photo_url, winner_team
+    `;
+    if (!rows.length) return res.status(404).json({ error: 'Match introuvable' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('photo error', e);
+    res.status(500).json({ error: 'Erreur enregistrement photo' });
+  }
+});
+
+// Galerie publique — derniers vainqueurs avec photo
+app.get('/api/match/gallery', async (_req, res) => {
+  try {
+    const rows = await sql`
+      SELECT id, match_date, team_a_score, team_b_score, photo_url, winner_team
+      FROM matches
+      WHERE photo_url IS NOT NULL AND photo_url <> ''
+      ORDER BY match_date DESC
+      LIMIT 12
+    `;
+    res.json(rows);
+  } catch { res.json([]); }
 });
 
 // ========================================================

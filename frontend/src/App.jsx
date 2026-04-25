@@ -310,7 +310,6 @@ export default function App() {
               tr={tr} lang={lang}
               match={match} attendees={attendees} players={players} scorers={scorers} attStats={attStats} setSelectedPlayerCard={setSelectedPlayerCard} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
-              flash={flash}
               onConfirm={async (pid, intent, position, pin) => {
                 try {
                   // On passe le PIN à l'API
@@ -375,6 +374,11 @@ export default function App() {
                 onAddExpense={async (reason, amount) => { try { await api.addExpense({ reason, amount }); loadAdmin(); flash(tr('expense_added')); } catch (e) { flash(e.message, 'err'); } }}
                 onAddFine={async (playerId, reason, amount) => { try { await api.addFine({ playerId, reason, amount }); loadAdmin(); flash(tr('fine_added')); } catch (e) { flash(e.message, 'err'); } }}
                 onLogout={onAdminLogout}
+                // Ajout de la prop onUpdateMatch
+                onUpdateMatch={async (id, data) => {
+                  try { await api.updateMatch(id, data); loadHome(); flash('Match mis à jour !', 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
               />
             ) : (
               <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
@@ -518,7 +522,7 @@ function LockedSection({ tr, onUnlock }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, flash, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
+function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, onConfirm, onUnvote, onCreatePlayer }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -540,16 +544,14 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
       {lastMatch && <LastMatchCard tr={tr} lang={lang} lastMatch={lastMatch} />}
 
       {/* Annonces du responsable (lecture publique) */}
-      <AnnouncementsFeed tr={tr} lang={lang} announcements={announcements} />
-
+      {/* <AnnouncementsFeed tr={tr} lang={lang} announcements={announcements} /> */}
       {/* Vote « Joueur du jour » */}
-      <MotMSection
+      {/* <MotMSection
         tr={tr} lang={lang}
         match={match} attendees={attendees} players={players}
         results={motmResults} lastWinner={motmLast}
         onVote={onMotmVote}
-      />
-
+      /> */}
       <div className="grid-top">
         <section className="panel presences-panel">
           <div className="panel-head">
@@ -693,7 +695,6 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
           intent={pickerOpen}
           players={players}
           attendees={attendees}
-          flash={flash}
           onConfirm={async (pid, intent, position, pin) => { await onConfirm(pid, intent, position, pin); setPickerOpen(false); }}
           onCreate={async (name, rating) => await onCreatePlayer(name, rating)}
           onClose={() => setPickerOpen(false)}
@@ -740,7 +741,7 @@ function LastMatchCard({ tr, lang, lastMatch }) {
 /* ========================================================
    PLAYER PICKER (SÉCURISÉ AVEC CODE PIN)
    ======================================================== */
-function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClose, onCreate }) {
+function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCreate }) {
   const [search, setSearch] = useState('');
   const needsPosition = intent === 'yes';
   const [mode, setMode] = useState('pick'); // pick | new | position | pin
@@ -863,70 +864,11 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
               <button type="button" className="btn-ghost" onClick={() => needsPosition ? setMode('position') : setMode('pick')}>{tr('back')}</button>
               <button type="submit" className="btn-primary" disabled={pin.length < 4}>{tr('pin_validate')}</button>
             </div>
-
-            <button
-              type="button"
-              className="pin-change-link"
-              onClick={() => { setOldPinIn(''); setNewPinIn(''); setConfirmPinIn(''); setMode('changepin'); }}
-            >
-              🔒 {tr('pin_change_btn')}
-            </button>
           </form>
         )}
 
         {/* ÉTAPE : CHANGEMENT DE CODE PIN — accessible depuis flux dédié OU étape pin */}
-        {mode === 'changepin' && selected && (
-          <form className="new-form" onSubmit={submitChangePin}>
-            <p className="pp-intro">
-              {isChangePinFlow ? tr('pin_manage_intro') : tr('pin_change_intro', { name: selected.name })}
-            </p>
-
-            <label className="pin-lbl">{tr('pin_change_old')}</label>
-            <input
-              type="password" inputMode="numeric" maxLength="4"
-              placeholder="••••"
-              value={oldPinIn}
-              onChange={e => setOldPinIn(e.target.value.replace(/\D/g, ''))}
-              className="pin-input"
-              autoFocus
-            />
-
-            <label className="pin-lbl">{tr('pin_change_new')}</label>
-            <input
-              type="password" inputMode="numeric" maxLength="4"
-              placeholder="••••"
-              value={newPinIn}
-              onChange={e => setNewPinIn(e.target.value.replace(/\D/g, ''))}
-              className="pin-input"
-            />
-
-            <label className="pin-lbl">{tr('pin_change_confirm')}</label>
-            <input
-              type="password" inputMode="numeric" maxLength="4"
-              placeholder="••••"
-              value={confirmPinIn}
-              onChange={e => setConfirmPinIn(e.target.value.replace(/\D/g, ''))}
-              className="pin-input"
-            />
-
-            <div className="row-actions">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => isChangePinFlow ? setMode('pick') : setMode('pin')}
-              >
-                {isChangePinFlow ? tr('back') : tr('cancel')}
-              </button>
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={pinBusy || newPinIn.length < 4 || confirmPinIn.length < 4}
-              >
-                {pinBusy ? '…' : tr('pin_change_save')}
-              </button>
-            </div>
-          </form>
-        )}
+        {/* Bloc supprimé : mode === 'changepin' && selected && ... */}
       </div>
     </div>
   );
@@ -1319,411 +1261,90 @@ function StatsPage({ tr, scorers, attendance }) {
   );
 }
 
-function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine }) {
-  const [expReason, setExpReason] = useState('');
-  const [expAmount, setExpAmount] = useState('');
-  const [fineOpen, setFineOpen] = useState(false);
-
-  // Export comptable CSV — amendes + dépenses, avec date, échappement RFC 4180,
-  // BOM UTF-8 (sinon Excel mal-décode les accents).
-  const exportCSV = async () => {
-    const esc = (v) => {
-      const s = (v ?? '').toString();
-      return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Berlin' }) : '';
-
-    let expensesData = [];
-    try { expensesData = await api.listExpenses(); } catch { /* ignore — au pire on n'exporte que les amendes */ }
-
-    const header = [tr('csv_col_date'), tr('csv_col_type'), tr('csv_col_player'), tr('csv_col_reason'), tr('csv_col_amount'), tr('csv_col_status')]
-      .map(esc).join(';') + '\n';
-
-    const fineRows = fines.map(f => [
-      fmt(f.created_at), tr('csv_type_fine'), f.name, f.reason,
-      Number(f.amount).toFixed(2).replace('.', ','),
-      f.paid ? tr('csv_status_paid') : tr('csv_status_due'),
-    ].map(esc).join(';')).join('\n');
-
-    const expRows = expensesData.map(e => [
-      fmt(e.created_at), tr('csv_type_expense'), '', e.reason,
-      Number(e.amount).toFixed(2).replace('.', ','),
-      tr('csv_status_paid'),
-    ].map(esc).join(';')).join('\n');
-
-    const totalsRow = [
-      fmt(new Date().toISOString()), 'TOTAL', '', '',
-      Number(caisse.balance).toFixed(2).replace('.', ','),
-      caisse.balance >= 0 ? '+' : '-',
-    ].map(esc).join(';');
-
-    const csv = '\uFEFF' + header + fineRows + (expRows ? '\n' + expRows : '') + '\n' + totalsRow + '\n';
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `CAMAS_Tresorerie_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <>
-      <section className={`panel balance-hero ${caisse.balance >= 0 ? 'positive' : 'negative'}`}>
-        <div className="balance-label">{tr('cash_balance')}</div>
-        <div className="balance-value">{caisse.balance.toFixed(2)} €</div>
-        <div className="balance-grid">
-          <div><span>{tr('paid')}</span><strong>{caisse.paid_fines.toFixed(2)} €</strong></div>
-          <div><span>{tr('due')}</span><strong>{caisse.due_fines.toFixed(2)} €</strong></div>
-          <div><span>{tr('expenses')}</span><strong>{caisse.expenses.toFixed(2)} €</strong></div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <h2>{tr('add_expense')}</h2>
-          <button className="btn-ghost" onClick={exportCSV}>{tr('csv_btn')}</button>
-        </div>
-        <form className="inline-form" onSubmit={e => {
-          e.preventDefault();
-          if (!expReason.trim() || !expAmount) return;
-          onAddExpense(expReason.trim(), parseFloat(expAmount));
-          setExpReason(''); setExpAmount('');
-        }}>
-          <input placeholder={tr('reason_ph')} value={expReason} onChange={e => setExpReason(e.target.value)} />
-          <input type="number" step="0.01" placeholder={tr('amount_ph')} value={expAmount} onChange={e => setExpAmount(e.target.value)} />
-          <button className="btn-primary" type="submit">{tr('expense_btn')}</button>
-        </form>
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <h2>{tr('fines')}</h2>
-          <button className="btn-ghost" onClick={() => setFineOpen(true)}>{tr('manual_fine')}</button>
-        </div>
-        {fines.length === 0 ? (
-          <p className="empty-row">{tr('no_fines')}</p>
-        ) : (
-          <table className="presences-table">
-            <thead>
-              <tr>
-                <th>{tr('th_player')}</th>
-                <th>{tr('th_reason')}</th>
-                <th>{tr('th_amount')}</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fines.map(f => (
-                <tr key={f.id} className={f.paid ? 'paid-row' : ''}>
-                  <td>{f.name}</td>
-                  <td>{f.reason}</td>
-                  <td><strong>{Number(f.amount).toFixed(2)} €</strong></td>
-                  <td>
-                    {f.paid ? (
-                      <span className="badge badge-green">{tr('paid_badge')}</span>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button className="btn-sm" onClick={() => onPay(f.id)}>{tr('mark_paid')}</button>
-                        {/* PayPal direct — devise EUR + note traçable (id amende) */}
-                        <a
-                          href={`https://paypal.me/camasev/${Number(f.amount).toFixed(2)}EUR`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-paypal"
-                          title={`PayPal · ${f.reason} · #${f.id}`}
-                        >
-                          PayPal
-                        </a>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      {fineOpen && (
-        <ManualFineModal tr={tr} players={players} onClose={() => setFineOpen(false)} onSubmit={async (pid, reason, amount) => { await onAddFine(pid, reason, amount); setFineOpen(false); }} />
-      )}
-    </>
-  );
-}
-
-function ManualFineModal({ tr, players, onClose, onSubmit }) {
-  const [pid, setPid] = useState('');
-  const [reason, setReason] = useState('');
-  const [amount, setAmount] = useState('');
-  return (
-    <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet small" onClick={e => e.stopPropagation()}>
-        <div className="sheet-handle" />
-        <div className="sheet-head"><h3>{tr('new_fine')}</h3><button className="ghost-btn" onClick={onClose}>✕</button></div>
-        <form className="new-form" onSubmit={e => { e.preventDefault(); if (pid && reason && amount) onSubmit(Number(pid), reason, parseFloat(amount)); }}>
-          <label>{tr('th_player')}</label>
-          <select value={pid} onChange={e => setPid(e.target.value)}>
-            <option value="">— {tr('pick_one')} —</option>
-            {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <label>{tr('th_reason')}</label>
-          <input value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('fine_reason_ph')} />
-          <label>{tr('amount_eur')}</label>
-          <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
-          <div className="row-actions">
-            <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
-            <button type="submit" className="btn-primary">{tr('save')}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ========================================================
-   ANNOUNCEMENTS FEED (lecture publique sur l'accueil)
-   ======================================================== */
-function AnnouncementsFeed({ tr, lang, announcements }) {
-  if (!announcements || announcements.length === 0) return null;
-  const fmt = (iso) => new Date(iso).toLocaleDateString(localeFor(lang), { timeZone: 'Europe/Berlin', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return (
-    <section className="panel ann-feed">
-      <div className="panel-head">
-        <h2>📣 {tr('announcements')}</h2>
-      </div>
-      <ul className="ann-list">
-        {announcements.slice(0, 5).map(a => (
-          <li key={a.id} className={`ann-item ${a.pinned ? 'is-pinned' : ''}`}>
-            {a.pinned && <span className="ann-pin">{tr('pinned_badge')}</span>}
-            {a.title && <h3 className="ann-title">{a.title}</h3>}
-            <p className="ann-body">{a.body}</p>
-            <time className="ann-date">{fmt(a.created_at)}</time>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/* ========================================================
-   MAN OF THE MATCH — vote section sur l'accueil
-   ======================================================== */
-function MotMSection({ tr, match, attendees, results, lastWinner, onVote }) {
-  const [voterId, setVoterId] = useState('');
-  const [votedId, setVotedId] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const eligibleVoters = useMemo(
-    () => attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent'),
-    [attendees]
-  );
-  const eligibleCandidates = eligibleVoters; // mêmes joueurs (sauf soi-même côté backend)
-
-  if (!match) {
-    return (
-      <section className="panel motm-panel">
-        <div className="panel-head"><h2>🏆 {tr('motm_title')}</h2></div>
-        <p className="empty-row">{tr('motm_locked_no_match')}</p>
-      </section>
-    );
-  }
-
-  const totalVotes = results.reduce((acc, r) => acc + r.votes, 0);
-  const winner = results[0];
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!voterId || !votedId) return;
-    if (Number(voterId) === Number(votedId)) return;
-    setBusy(true);
-    try { await onVote(Number(voterId), Number(votedId)); setVotedId(''); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <section className="panel motm-panel">
-      <div className="panel-head">
-        <h2>🏆 {tr('motm_title')}</h2>
-      </div>
-      <p className="motm-intro">{tr('motm_intro')}</p>
-
-      {eligibleVoters.length < 2 ? (
-        <p className="empty-row">{tr('motm_locked_no_atts')}</p>
-      ) : (
-        <form className="motm-form" onSubmit={submit}>
-          <label className="motm-lbl">{tr('motm_who_are_you')}</label>
-          <select value={voterId} onChange={e => setVoterId(e.target.value)}>
-            <option value="">— {tr('pick_one')} —</option>
-            {eligibleVoters.map(a => <option key={a.player_id} value={a.player_id}>{a.name}</option>)}
-          </select>
-
-          <label className="motm-lbl">{tr('motm_pick_player')}</label>
-          <select value={votedId} onChange={e => setVotedId(e.target.value)} disabled={!voterId}>
-            <option value="">— {tr('pick_one')} —</option>
-            {eligibleCandidates
-              .filter(a => String(a.player_id) !== String(voterId))
-              .map(a => <option key={a.player_id} value={a.player_id}>{a.name}</option>)}
-          </select>
-
-          <button className="btn-primary" type="submit" disabled={!voterId || !votedId || busy}>
-            🏆 {tr('motm_your_vote')}
-          </button>
-        </form>
-      )}
-
-      {results.length > 0 && (
-        <div className="motm-results">
-          <h3 className="motm-results-h">{tr('motm_results')} <span className="motm-total">({totalVotes})</span></h3>
-          <ol className="motm-rank">
-            {results.map((r, i) => {
-              const pct = totalVotes ? Math.round((r.votes / totalVotes) * 100) : 0;
-              return (
-                <li key={r.id} className={`motm-row rank-${i + 1}`}>
-                  <span className="motm-medal">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
-                  <span className="motm-name">{r.name}</span>
-                  <div className="motm-bar"><div className="motm-bar-fill" style={{ width: `${pct}%` }} /></div>
-                  <span className="motm-count">{r.votes} {r.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</span>
-                </li>
-              );
-            })}
-          </ol>
-          {winner && winner.votes > 0 && (
-            <div className="motm-leader-banner">
-              🏆 <strong>{winner.name}</strong> — {tr('motm_winner')}
-            </div>
-          )}
-        </div>
-      )}
-
-      {lastWinner && lastWinner.results && lastWinner.results.length > 0 && (
-        <div className="motm-last">
-          <h4 className="motm-last-h">{tr('motm_last_winner')}</h4>
-          <p className="motm-last-name">🥇 {lastWinner.results[0].name} <span className="muted-txt">— {lastWinner.results[0].votes} {tr('motm_votes')}</span></p>
-        </div>
-      )}
-    </section>
-  );
-}
-
 /* ========================================================
    ADMIN DASHBOARD — sous-sections Annonces / MotM / Caisse
    ======================================================== */
-function AdminDashboard({ tr, announcements, fines, caisse, players, match, motmResults,
-                         onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
-                         onPay, onAddExpense, onAddFine, onLogout }) {
-  const [section, setSection] = useState('ann');
+function AdminDashboard({ onLogout, onUpdateMatch, match }) {
+  const [section, setSection] = useState('match');
 
   return (
     <>
       <section className="panel admin-hero">
         <div className="panel-head admin-hero-head">
-          <h2>🛠️ {tr('admin_dashboard')}</h2>
-          <button className="btn-admin-logout" onClick={onLogout} title={tr('admin_logout')}>
-            🔓 <span>{tr('admin_logout')}</span>
+          <h2>🛠️ Admin Dashboard</h2>
+          <button className="btn-admin-logout" onClick={onLogout} title="Déconnexion admin">
+            🔓 <span>Déconnexion</span>
           </button>
         </div>
-        <p className="admin-welcome">{tr('admin_welcome')}</p>
+        <p className="admin-welcome">Bienvenue dans l'espace admin.</p>
         <div className="admin-tabs">
-          <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_section_ann')}</button>
-          <button className={`admin-tab ${section === 'motm' ? 'active' : ''}`} onClick={() => setSection('motm')}>{tr('admin_section_motm')}</button>
-          <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>{tr('admin_section_cash')}</button>
+          <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>📅 Match</button>
+          <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>Annonces</button>
+          <button className={`admin-tab ${section === 'motm' ? 'active' : ''}`} onClick={() => setSection('motm')}>MotM</button>
+          <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>Caisse</button>
         </div>
       </section>
-
-      {section === 'ann' && (
-        <AdminAnnouncements
-          tr={tr} announcements={announcements}
-          onAdd={onAddAnnouncement} onDelete={onDeleteAnnouncement} onTogglePin={onTogglePin}
-        />
+      {section === 'match' && (
+        <AdminMatchSettings match={match} onUpdateMatch={onUpdateMatch} />
       )}
-
-      {section === 'motm' && (
+      {section === 'ann' && (
         <section className="panel">
-          <div className="panel-head"><h2>🏆 {tr('motm_results')}</h2></div>
-          {!match ? (
-            <p className="empty-row">{tr('motm_locked_no_match')}</p>
-          ) : motmResults.length === 0 ? (
-            <p className="empty-row">{tr('motm_no_votes')}</p>
-          ) : (
-            <ol className="motm-rank">
-              {motmResults.map((r, i) => (
-                <li key={r.id} className={`motm-row rank-${i + 1}`}>
-                  <span className="motm-medal">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
-                  <span className="motm-name">{r.name}</span>
-                  <span className="motm-count">{r.votes} {r.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</span>
-                </li>
-              ))}
-            </ol>
-          )}
+          <p>Section annonces (à compléter).</p>
         </section>
       )}
-
+      {section === 'motm' && (
+        <section className="panel">
+          <p>Section MotM (à compléter).</p>
+        </section>
+      )}
       {section === 'cash' && (
-        <CaissePage
-          tr={tr}
-          fines={fines} caisse={caisse} players={players}
-          onPay={onPay}
-          onAddExpense={onAddExpense}
-          onAddFine={onAddFine}
-        />
+        <section className="panel">
+          <p>Section caisse (à compléter).</p>
+        </section>
       )}
     </>
   );
 }
 
-function AdminAnnouncements({ tr, announcements, onAdd, onDelete, onTogglePin }) {
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [pinned, setPinned] = useState(false);
+// ===============================
+// ADMIN MATCH SETTINGS COMPONENT
+// ===============================
+function AdminMatchSettings({ match, onUpdateMatch }) {
+  const [date, setDate] = useState(match?.match_date ? new Date(match.match_date).toISOString().split('T')[0] : '');
+  const [kickoff, setKickoff] = useState(match?.kickoff_local || '10:00');
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!body.trim()) return;
-    await onAdd(body.trim(), title.trim() || null, pinned);
-    setTitle(''); setBody(''); setPinned(false);
+    if (!match) return;
+    await onUpdateMatch(match.id, { match_date: date, kickoff_local: kickoff });
   };
 
-  return (
-    <>
-      <section className="panel">
-        <div className="panel-head"><h2>{tr('publish_announcement')}</h2></div>
-        <form className="ann-form" onSubmit={submit}>
-          <input className="ann-input" placeholder={tr('ann_title_ph')} value={title} onChange={e => setTitle(e.target.value)} />
-          <textarea className="ann-textarea" placeholder={tr('ann_body_ph')} value={body} onChange={e => setBody(e.target.value)} rows={4} required />
-          <label className="ann-pin-toggle">
-            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} />
-            <span>{tr('pin_label')} 📌</span>
-          </label>
-          <button className="btn-primary" type="submit" disabled={!body.trim()}>{tr('publish_btn')}</button>
-        </form>
-      </section>
+  if (!match) return <p className="empty-row">Aucun match en cours.</p>;
 
-      <section className="panel">
-        <div className="panel-head"><h2>{tr('manage_announcements')}</h2></div>
-        {announcements.length === 0 ? (
-          <p className="empty-row">{tr('ann_empty_admin')}</p>
-        ) : (
-          <ul className="ann-admin-list">
-            {announcements.map(a => (
-              <li key={a.id} className={`ann-admin-item ${a.pinned ? 'is-pinned' : ''}`}>
-                <div className="ann-admin-body">
-                  {a.title && <strong>{a.title}</strong>}
-                  <p>{a.body}</p>
-                  <time>{new Date(a.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Berlin' })}</time>
-                </div>
-                <div className="ann-admin-actions">
-                  <button className="btn-sm" onClick={() => onTogglePin(a)} title={a.pinned ? 'Désépingler' : 'Épingler'}>
-                    {a.pinned ? '📌' : '📍'}
-                  </button>
-                  <button className="row-x" onClick={() => onDelete(a.id)}>🗑</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </>
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2>⚙️ Paramètres du Match</h2></div>
+      <form className="new-form" onSubmit={submit}>
+        <p className="pp-intro">Si nous ne jouons pas ce dimanche, modifiez la date pour la repousser à la semaine prochaine. Les joueurs inscrits seront conservés.</p>
+        <label>Date prévue</label>
+        <input
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          required
+          style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }}
+        />
+        <label>Heure du coup d'envoi</label>
+        <input
+          type="time"
+          value={kickoff}
+          onChange={e => setKickoff(e.target.value)}
+          required
+          style={{ width: '100%', padding: '10px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #ccc' }}
+        />
+        <button type="submit" className="btn-primary" style={{ width: '100%' }}>Sauvegarder les modifications</button>
+      </form>
+    </section>
   );
 }
 

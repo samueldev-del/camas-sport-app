@@ -1791,129 +1791,10 @@ table { width: 100%; border-collapse: collapse; }
     border-radius: 16px;
   }
   .last-match-score { font-size: 1.7rem; gap: 14px; }
-  .lm-team strong { font-size: 2rem; }
-  .lm-team { gap: 8px; }
-  .lm-team span { font-size: 0.7rem; }
-  .score-input input { width: 72px; font-size: 1.5rem; padding: 10px; }
-  .score-form { gap: 10px; }
-  .position-grid { grid-template-columns: 1fr 1fr; }
-
-  /* Tables: compact on small screens but still readable */
-  .presences-table { font-size: 0.85rem; }
-  .presences-table thead th { padding: 6px 8px; font-size: 0.72rem; }
-  .presences-table tbody td { padding: 8px 8px; }
-
-  /* Forms full width */
-  .inline-form { gap: 8px; }
-  .inline-form input, .inline-form select { min-width: 0; }
-
-  /* Touch targets */
-  .btn-primary, .btn-ghost, .btn-sm {
-    min-height: 44px;
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .row-x { width: 36px; height: 36px; font-size: 1rem; }
-  .nav-tab { min-height: 44px; }
-
-  /* Bottom sheet edge-to-edge on phones */
-  .sheet-overlay { padding: 0; align-items: flex-end; }
-  .sheet {
-    max-width: 100%;
-    border-radius: 22px 22px 0 0;
-    padding-bottom: calc(20px + var(--safe-bottom));
-    max-height: 92dvh;
-    animation: sheetup 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @keyframes sheetup {
-    from { opacity: 0; transform: translateY(40px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .player-grid {
-    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
-    gap: 8px;
-    padding: 0 14px 14px;
-  }
-
-  .toast {
-    bottom: calc(82px + var(--safe-bottom));
-    font-size: 0.85rem;
-    padding: 10px 18px;
-    left: 12px;
-    right: 12px;
-    max-width: calc(100% - 24px);
-  }
-
-  /* Intent grid: stack en colonne, plus tactile */
-  .intent-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin: 12px 0;
-  }
-  .intent-btn {
-    padding: 14px 16px;
-    font-size: 0.95rem;
-    min-height: 64px;
-    border-radius: 14px;
-  }
-  .intent-emoji { width: 42px; height: 42px; font-size: 1.5rem; }
-
-  /* Locked panel mobile */
-  .locked-panel { padding: 36px 18px !important; min-height: 50dvh; justify-content: center; }
-  .locked-icon { font-size: 3rem; }
-  .locked-panel h2 { font-size: 1.1rem; }
-
-  /* Locked-inline (sur l'onglet équipes pour non-admin) */
-  .locked-inline { padding: 14px 16px !important; font-size: 0.85rem; }
-
-  /* Présences résumé */
-  .presences-summary { gap: 6px; }
-  .psum { font-size: 0.72rem; padding: 3px 8px; }
-
-  /* Tableaux: scroll horizontal si trop de colonnes */
-  .panel { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .panel > .presences-table { min-width: 100%; }
-
-  /* Admin sheet: même taille */
-  .admin-sheet input[type="password"] {
-    font-size: 1rem;
-    padding: 14px 16px;
-  }
-}
-
-@media (max-width: 480px) {
-  .balance-value { font-size: 2rem !important; }
-  .format-value { font-size: 1.4rem; }
-  .scorer-avatar { width: 56px; height: 56px; font-size: 1.4rem; }
-
-  .brand-title { font-size: 0.88rem; }
-  .logo-circle { width: 40px; height: 40px; }
-  .btn-install { padding: 5px 9px; font-size: 0.68rem; }
-  .btn-admin { padding: 6px 8px; font-size: 0.7rem; }
-  .lang-btn { padding: 4px 6px; }
-  .lang-flag { font-size: 0.95rem; }
-
-  .player-dot {
-    font-size: 0.68rem;
-    padding: 4px 9px 4px 5px;
-    border-width: 1.5px;
-  }
-  .player-dot::before { width: 12px; height: 12px; }
-  .dot-goals { font-size: 0.62rem; padding: 1px 5px; }
-
-  .pos-row-label { min-width: 28px; font-size: 0.6rem; padding: 2px 6px; }
-  .pitch { padding: 12px 6px; aspect-ratio: 3 / 4.6; }
-  .pos-row { gap: 6px; padding: 2px; }
-  .pos-row-players { gap: 5px; }
-
-  .score-form { gap: 8px; }
+  .lm-team strong { font-size: 2rem; min-width: 30px; }
+  .lm-team span { font-size: 0.66rem; }
   .score-input input { width: 62px; font-size: 1.3rem; padding: 8px; }
   .score-dash { font-size: 1.4rem; }
-
-  .last-match-score { font-size: 1.4rem; gap: 8px; }
-  .lm-team strong { font-size: 1.7rem; min-width: 30px; }
-  .lm-team span { font-size: 0.66rem; }
 
   .top-nav.mobile-bottom .nav-tab { font-size: 0.6rem; }
   .top-nav.mobile-bottom .nav-ic { font-size: 1.2rem; }
@@ -1928,7 +1809,7 @@ table { width: 100%; border-collapse: collapse; }
   .intent-emoji { width: 38px; height: 38px; font-size: 1.35rem; }
   .intent-lbl { font-size: 0.88rem; }
 
-  /* Tableau présences: cacher colonne Arrivée sur très petits écrans */
+  /* Tableaux: cacher colonne Arrivée sur très petits écrans */
   .presences-table th:nth-child(4),
   .presences-table td:nth-child(4) { display: none; }
 
@@ -2892,4 +2773,56 @@ h1, h2, h3, h4 {
   .admin-hero { padding: 16px; }
   .ann-admin-item { flex-direction: column; }
   .ann-admin-actions { align-self: flex-end; }
+}
+
+/* ===== PIN FORM FUT CARD ====== */
+.pin-fut-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0 0 0;
+  align-items: stretch;
+}
+.pin-fut-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+  color: #1b5e20;
+}
+.pin-fut-form input[type="password"] {
+  font-size: 1.1rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid #bdbdbd;
+  background: #fffde7;
+  margin-bottom: 2px;
+  text-align: center;
+  letter-spacing: 0.2em;
+  font-family: inherit;
+}
+.pin-fut-form input[type="password"]:focus {
+  outline: 2px solid #f9a825;
+  border-color: #f9a825;
+}
+.pin-fut-form .row-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.fut-pin-toggle {
+  margin: 18px auto 0 auto;
+  background: #fffde7;
+  color: #1b5e20;
+  border: 1.5px solid #f9a825;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s, border 0.2s;
+}
+.fut-pin-toggle:hover {
+  background: #f9a825;
+  color: #fff;
+  border-color: #fbc02d;
 }

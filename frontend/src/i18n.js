@@ -303,6 +303,65 @@ const FR = {
   cookie_text:          'Nous utilisons uniquement le stockage local du navigateur pour la langue et la session. Aucun cookie publicitaire ni traceur.',
   cookie_accept:        'OK, j\'ai compris',
   cookie_more:          'En savoir plus',
+
+  // ===== Nouvelles entrées (PIN libre + admin tabs Match/Planning + Galerie + Stats datées) =====
+  // Bouton public pour changer son PIN sans voter
+  pin_manage_btn:       '🔒 Gérer mon code PIN',
+  pin_manage_intro:     'Choisis ton nom pour modifier ton code à 4 chiffres.',
+  pin_manage_picker:    'Modifier mon code',
+
+  // Stats — colonne « dernière activité »
+  stats_last_goal:      'Dernier but',
+  stats_last_match:     'Dernier match',
+  stats_season_label:   'Saison',
+  stats_season_range:   'Du {first} au {last}',
+  stats_season_count:   '{n} matchs joués',
+
+  // Historique public — résultats par dimanche
+  history_title:        '📅 Résultats par dimanche',
+  history_empty:        'Aucun match terminé pour le moment.',
+  history_winner_a:     'Victoire {team}',
+  history_winner_draw:  'Match nul',
+
+  // Admin — tab Match (saisie score + buteurs)
+  admin_section_match:  '⚽ Match',
+  admin_section_plan:   '📅 Planning',
+  admin_match_intro:    'Saisis le score final et les buteurs du dimanche en cours. Une fois enregistré, le score est visible publiquement et n\'est plus modifiable par les joueurs.',
+  admin_no_current:     'Aucun match en cours dans la base.',
+  admin_match_winner:   'Vainqueur',
+  winner_a:             'Équipe A',
+  winner_b:             'Équipe B',
+  winner_draw:          'Match nul',
+  admin_match_photo:    'Photo de l\'équipe vainqueur (URL)',
+  admin_match_photo_ph: 'https://… (Imgur, Drive, iCloud Photos…)',
+  admin_match_photo_save:'Enregistrer photo & vainqueur',
+  admin_match_photo_ok: '✅ Galerie mise à jour',
+  admin_match_photo_hint:'Pour héberger la photo : ouvre imgur.com → glisse l\'image → copie le lien direct (.jpg ou .png) puis colle ici.',
+
+  // Admin — tab Planning
+  admin_plan_intro:     'Liste des dimanches déjà planifiés. Tu peux créer un match à l\'avance pour ouvrir le sondage plus tôt.',
+  admin_plan_create:    'Programmer un dimanche',
+  admin_plan_date:      'Date du match',
+  admin_plan_kickoff:   'Coup d\'envoi',
+  admin_plan_notes:     'Notes (optionnel)',
+  admin_plan_notes_ph:  'Ex: tournoi inter-clubs, terrain B…',
+  admin_plan_save:      'Programmer',
+  admin_plan_created:   '✅ Match programmé',
+  admin_plan_existing:  '✅ Déjà programmé',
+  admin_plan_status_open:'Ouvert',
+  admin_plan_status_closed:'Clôturé',
+  admin_plan_status_done:'Terminé',
+  admin_plan_delete:    'Supprimer',
+  admin_plan_del_confirm:'Supprimer ce match planifié ?',
+
+  // Public — galerie photos vainqueurs
+  gallery_title:        '🏆 Galerie des champions',
+  gallery_empty:        'La galerie sera bientôt en ligne — premières photos après le prochain match.',
+  gallery_winner:       'Vainqueurs',
+
+  // Stadium read-only score
+  score_locked:         'Score officiel',
+  score_locked_hint:    'Le score est saisi par le responsable.',
 };
 
 const DE = {
@@ -604,6 +663,58 @@ const DE = {
   cookie_text:          'Wir verwenden ausschließlich den lokalen Speicher des Browsers für Sprache und Sitzung. Keine Werbe-Cookies, kein Tracking.',
   cookie_accept:        'OK, verstanden',
   cookie_more:          'Mehr erfahren',
+
+  // ===== Neue Einträge =====
+  pin_manage_btn:       '🔒 Meinen PIN verwalten',
+  pin_manage_intro:     'Wähle deinen Namen, um deinen 4-stelligen Code zu ändern.',
+  pin_manage_picker:    'PIN ändern',
+
+  stats_last_goal:      'Letztes Tor',
+  stats_last_match:     'Letztes Spiel',
+  stats_season_label:   'Saison',
+  stats_season_range:   'Vom {first} bis {last}',
+  stats_season_count:   '{n} gespielte Spiele',
+
+  history_title:        '📅 Ergebnisse pro Sonntag',
+  history_empty:        'Noch keine abgeschlossenen Spiele.',
+  history_winner_a:     'Sieg {team}',
+  history_winner_draw:  'Unentschieden',
+
+  admin_section_match:  '⚽ Spiel',
+  admin_section_plan:   '📅 Planung',
+  admin_match_intro:    'Gib das Endergebnis und die Torschützen des aktuellen Sonntags ein. Sobald gespeichert, ist das Ergebnis öffentlich sichtbar und kann von Spielern nicht mehr geändert werden.',
+  admin_no_current:     'Kein aktuelles Spiel in der Datenbank.',
+  admin_match_winner:   'Sieger',
+  winner_a:             'Team A',
+  winner_b:             'Team B',
+  winner_draw:          'Unentschieden',
+  admin_match_photo:    'Foto des Sieger-Teams (URL)',
+  admin_match_photo_ph: 'https://… (Imgur, Drive, iCloud Photos…)',
+  admin_match_photo_save:'Foto & Sieger speichern',
+  admin_match_photo_ok: '✅ Galerie aktualisiert',
+  admin_match_photo_hint:'Hosting-Tipp: imgur.com öffnen → Bild ziehen → Direktlink (.jpg/.png) kopieren und hier einfügen.',
+
+  admin_plan_intro:     'Liste der bereits geplanten Sonntage. Du kannst ein Spiel im Voraus anlegen, um die Abstimmung früher zu öffnen.',
+  admin_plan_create:    'Sonntag planen',
+  admin_plan_date:      'Spieldatum',
+  admin_plan_kickoff:   'Anstoß',
+  admin_plan_notes:     'Notizen (optional)',
+  admin_plan_notes_ph:  'z. B. Vereinsturnier, Platz B…',
+  admin_plan_save:      'Planen',
+  admin_plan_created:   '✅ Spiel geplant',
+  admin_plan_existing:  '✅ Bereits geplant',
+  admin_plan_status_open:'Offen',
+  admin_plan_status_closed:'Geschlossen',
+  admin_plan_status_done:'Beendet',
+  admin_plan_delete:    'Löschen',
+  admin_plan_del_confirm:'Geplantes Spiel löschen?',
+
+  gallery_title:        '🏆 Galerie der Sieger',
+  gallery_empty:        'Die Galerie startet bald — erste Fotos nach dem nächsten Spiel.',
+  gallery_winner:       'Sieger',
+
+  score_locked:         'Offizielles Ergebnis',
+  score_locked_hint:    'Das Ergebnis wird vom Verantwortlichen eingegeben.',
 };
 
 export const DICTS = { fr: FR, de: DE };

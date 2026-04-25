@@ -119,4 +119,6 @@ export const api = {
 
   // Ajout de la route pour modifier le match (admin)
   updateMatch:     (id, data) => req(`/api/match/${id}`, { method: 'PATCH', body: data }),
+  updateMatchPhoto: (id, photoUrl, winnerTeam) =>
+    req(`/api/match/${id}/photo`, { method: 'PATCH', body: { photoUrl, winnerTeam } }),
 };

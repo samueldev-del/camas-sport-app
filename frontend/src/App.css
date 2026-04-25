@@ -1669,3 +1669,307 @@ table { width: 100%; border-collapse: collapse; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==============================================
+   v2 — i18n, intent picker, admin, design polish
+   (cumulative additions, ne pas réordonner)
+   ============================================== */
+
+/* --- Header layout v2 (lang + admin) --- */
+.header-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--green-d);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.brand-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Lang switch --- */
+.lang-switch {
+  display: inline-flex;
+  background: rgba(255,255,255,0.85);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
+}
+.lang-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-2);
+  transition: all 0.18s ease;
+}
+.lang-btn:hover { background: rgba(46,125,50,0.08); }
+.lang-btn.active {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(46,125,50,0.35);
+}
+.lang-flag { font-size: 0.95rem; line-height: 1; }
+.lang-code { font-size: 0.7rem; letter-spacing: 0.05em; }
+
+/* --- Admin button --- */
+.btn-admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: linear-gradient(180deg, #fff 0%, #f4f4f4 100%);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.78rem;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.18s ease;
+}
+.btn-admin:hover {
+  border-color: var(--green);
+  color: var(--green-d);
+}
+.btn-admin.is-admin {
+  background: linear-gradient(180deg, var(--green) 0%, var(--green-d) 100%);
+  color: #fff;
+  border-color: var(--green-d);
+  box-shadow: 0 4px 12px rgba(46,125,50,0.4);
+}
+.btn-admin.is-admin:hover { color: #fff; }
+.btn-admin-lbl { display: inline; }
+
+/* --- Locked tab indicator --- */
+.nav-tab.locked { opacity: 0.55; }
+.nav-tab.locked .nav-ic { position: relative; }
+.lock-mini {
+  position: absolute;
+  bottom: -3px; right: -7px;
+  font-size: 0.6rem;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 3px;
+  line-height: 1;
+}
+
+/* --- Intent grid (3-button picker on home) --- */
+.intent-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+.intent-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  font-weight: 800;
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+  color: #fff;
+  border: 2px solid transparent;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+.intent-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 50%);
+  pointer-events: none;
+}
+.intent-btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.intent-btn:active { transform: translateY(0); }
+.intent-emoji {
+  font-size: 1.6rem;
+  background: rgba(255,255,255,0.22);
+  width: 44px; height: 44px;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.intent-lbl { line-height: 1.2; }
+
+.intent-yes {
+  background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%);
+}
+.intent-maybe {
+  background: linear-gradient(135deg, #f9a825 0%, #ef6c00 100%);
+}
+.intent-no {
+  background: linear-gradient(135deg, #e53935 0%, #b71c1c 100%);
+}
+
+/* --- Intent badge inside picker sheet --- */
+.intent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  margin: 4px 0 12px;
+  align-self: flex-start;
+}
+.intent-badge-yes   { background: var(--green-soft);  color: var(--green-d);  border: 1px solid var(--green-l); }
+.intent-badge-maybe { background: var(--yellow-soft); color: #b76f00;          border: 1px solid var(--yellow-l); }
+.intent-badge-no    { background: var(--red-soft);    color: var(--red-d);    border: 1px solid var(--red-l); }
+
+/* --- Presence summary bar --- */
+.presences-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.psum {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+.psum-green  { background: var(--green-soft);  color: var(--green-d);  border: 1px solid var(--green-l); }
+.psum-yellow { background: var(--yellow-soft); color: #b76f00;          border: 1px solid var(--yellow-l); }
+
+/* --- Position pill: maybe --- */
+.pos-tag.pos-maybe {
+  background: linear-gradient(135deg, #fdd835 0%, #f9a825 100%);
+  color: #5d4037;
+  border: 1px solid #f9a825;
+}
+
+/* --- badge yellow (for maybe status) --- */
+.badge.badge-yellow {
+  background: var(--yellow-soft);
+  color: #b76f00;
+  border: 1px solid var(--yellow-l);
+}
+
+/* --- Locked section (caisse without admin) --- */
+.locked-panel {
+  text-align: center;
+  padding: 48px 24px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.locked-panel h2 {
+  font-size: 1.3rem;
+  color: var(--ink);
+}
+.locked-panel .btn-primary { margin-top: 8px; }
+.locked-icon {
+  font-size: 3.5rem;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+}
+.locked-inline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+  padding: 16px 20px !important;
+  border-left: 4px solid var(--yellow-d);
+}
+.locked-icon-sm { font-size: 1.6rem; }
+
+/* --- Admin sheet --- */
+.admin-sheet .admin-intro {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+.admin-sheet input[type="password"] {
+  letter-spacing: 0.3em;
+  font-size: 1.05rem;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  margin-top: 4px;
+  transition: border 0.15s ease;
+}
+.admin-sheet input[type="password"]:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(46,125,50,0.15);
+}
+
+/* --- Mobile tweaks v2 --- */
+@media (max-width: 720px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    gap: 12px;
+    min-height: auto;
+  }
+  .brand-title { font-size: 1.05rem; }
+  .brand-sub { font-size: 0.62rem; }
+  .header-tools {
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .btn-admin-lbl { display: none; }
+  .btn-admin { padding: 7px 10px; }
+  .lang-btn { padding: 4px 8px; }
+  .lang-code { display: none; }
+
+  .intent-btn {
+    padding: 12px 14px;
+    font-size: 0.92rem;
+    gap: 10px;
+  }
+  .intent-emoji { width: 38px; height: 38px; font-size: 1.4rem; }
+
+  .locked-panel { padding: 32px 18px !important; }
+  .locked-icon { font-size: 2.6rem; }
+}
+
+@media (min-width: 900px) {
+  .intent-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+

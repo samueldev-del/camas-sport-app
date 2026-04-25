@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS attendances (
   vote_time    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   arrival_time TIMESTAMPTZ,
   status       TEXT NOT NULL DEFAULT 'registered'
-               CHECK (status IN ('registered','present','late','absent')),
+               CHECK (status IN ('registered','present','late','absent','maybe')),
   is_late      BOOLEAN NOT NULL DEFAULT FALSE,
   team         TEXT CHECK (team IN ('A','B','C','D')),
   UNIQUE (match_id, player_id)

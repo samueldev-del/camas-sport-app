@@ -4,20 +4,40 @@
 // Possibilité d'override via VITE_API_URL (ex: http://192.168.1.10:3000 pour tester sur téléphone).
 const BASE = import.meta.env.VITE_API_URL || '';
 
+const ADMIN_KEY = 'camas_admin_code';
+
+export function getAdminCode() {
+  try { return localStorage.getItem(ADMIN_KEY) || ''; } catch { return ''; }
+}
+export function setAdminCode(code) {
+  try {
+    if (code) localStorage.setItem(ADMIN_KEY, code);
+    else localStorage.removeItem(ADMIN_KEY);
+  } catch { /* ignore */ }
+}
+export function clearAdminCode() { setAdminCode(''); }
+
 async function req(path, { method = 'GET', body } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  const code = getAdminCode();
+  if (code) headers['x-admin-code'] = code;
+
   let res;
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
-    // Erreur réseau : on donne un message clair
     throw new Error('Réseau indisponible — réessaie dans un instant');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -29,12 +49,18 @@ export const api = {
 
   currentMatch:    () => req('/api/match/current'),
   lastMatch:       () => req('/api/match/last'),
-  vote:            (playerId, position) => req('/api/vote', { method: 'POST', body: { playerId, position } }),
-  unvote:          (playerId, matchId) => req('/api/vote', { method: 'DELETE', body: { playerId, matchId } }),
-  updatePosition:  (playerId, matchId, position) => req('/api/vote/position', { method: 'PATCH', body: { playerId, matchId, position } }),
+
+  // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'.
+  vote:            (playerId, intent, position) =>
+    req('/api/vote', { method: 'POST', body: { playerId, intent, position } }),
+  unvote:          (playerId, matchId) =>
+    req('/api/vote', { method: 'DELETE', body: { playerId, matchId } }),
+  updatePosition:  (playerId, matchId, position) =>
+    req('/api/vote/position', { method: 'PATCH', body: { playerId, matchId, position } }),
 
   teams:           (matchId) => req(`/api/teams/${matchId}`),
-  setResult:       (matchId, teamA, teamB) => req(`/api/match/${matchId}/result`, { method: 'POST', body: { teamA, teamB } }),
+  setResult:       (matchId, teamA, teamB) =>
+    req(`/api/match/${matchId}/result`, { method: 'POST', body: { teamA, teamB } }),
 
   recordGoals:     (body) => req('/api/goals', { method: 'POST', body }),
   matchGoals:      (matchId) => req(`/api/goals/${matchId}`),
@@ -48,4 +74,14 @@ export const api = {
 
   addExpense:      (body) => req('/api/expenses', { method: 'POST', body }),
   caisse:          () => req('/api/caisse'),
+
+  // Vérifie le code admin auprès du backend
+  adminCheck:      (code) => fetch(`${BASE}/api/admin/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-code': code },
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Code admin invalide');
+    return d;
+  }),
 };

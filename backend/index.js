@@ -7,11 +7,34 @@ const app = express();
 const port = process.env.PORT || 3000;
 const TZ = 'Europe/Berlin';
 const LATE_FINE_EUR = 2.0;
+const PER_TEAM = 11; // format unique : 11 vs 11
 
 app.use(cors());
 app.use(express.json());
 
 const sql = neon(process.env.DATABASE_URL);
+
+// ---------- admin auth (PIN partagé via env var) ----------
+const ADMIN_CODE = process.env.ADMIN_CODE || '';
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_CODE) {
+    return res.status(503).json({ error: 'ADMIN_CODE non configuré côté serveur' });
+  }
+  const provided = req.headers['x-admin-code'];
+  if (provided !== ADMIN_CODE) {
+    return res.status(401).json({ error: 'Accès refusé — code admin invalide' });
+  }
+  next();
+}
+
+// Endpoint de vérification du code admin (le frontend l'appelle au login)
+app.post('/api/admin/check', (req, res) => {
+  const code = req.body?.code || req.headers['x-admin-code'];
+  if (!ADMIN_CODE) return res.status(503).json({ ok: false, error: 'ADMIN_CODE non configuré' });
+  if (code !== ADMIN_CODE) return res.status(401).json({ ok: false, error: 'Code invalide' });
+  res.json({ ok: true });
+});
 
 // ---------- helpers ----------
 function nextSundayBerlin() {
@@ -102,34 +125,70 @@ app.get('/api/match/current', async (_req, res) => {
   res.json({ match, attendees });
 });
 
-// Vote — confirm presence with position
+// Vote — 3 intentions possibles : 'yes' (vient), 'maybe' (peut-être), 'no' (absent)
 app.post('/api/vote', async (req, res) => {
-  const { playerId, position } = req.body;
+  const { playerId, position, intent = 'yes' } = req.body;
   if (!playerId) return res.status(400).json({ error: 'Joueur requis' });
-  if (position && !['G','DEF','MIL','ATT'].includes(position)) {
+  if (!['yes','maybe','no'].includes(intent)) {
+    return res.status(400).json({ error: 'Intention invalide' });
+  }
+  if (intent === 'yes' && position && !['G','DEF','MIL','ATT'].includes(position)) {
     return res.status(400).json({ error: 'Poste invalide' });
   }
 
   const match = await getOrCreateCurrentMatch();
-  const late = await isLateForMatch(match);
+  const late = intent === 'yes' ? await isLateForMatch(match) : false;
+
+  // Mapping intent → status DB
+  // yes  → 'late' si en retard sinon 'registered'
+  // maybe → 'maybe'
+  // no    → 'absent'
+  const status = intent === 'no'    ? 'absent'
+              : intent === 'maybe' ? 'maybe'
+              : (late ? 'late' : 'registered');
+
+  // Position obligatoire seulement si "yes"
+  const finalPosition = intent === 'yes' ? (position || null) : null;
 
   try {
+    // Upsert : si le joueur change d'avis, on met à jour
     const rows = await sql`
       INSERT INTO attendances (match_id, player_id, status, is_late, arrival_time, position)
-      VALUES (${match.id}, ${playerId},
-              ${late ? 'late' : 'registered'}, ${late}, NOW(), ${position || null})
+      VALUES (${match.id}, ${playerId}, ${status}, ${late},
+              ${intent === 'yes' ? new Date() : null}, ${finalPosition})
+      ON CONFLICT (match_id, player_id) DO UPDATE
+        SET status       = EXCLUDED.status,
+            is_late      = EXCLUDED.is_late,
+            arrival_time = EXCLUDED.arrival_time,
+            position     = EXCLUDED.position,
+            vote_time    = NOW()
       RETURNING *
     `;
-    if (late) {
+
+    // Amende retard uniquement si "yes" + en retard, et pas déjà créée
+    if (intent === 'yes' && late) {
       await sql`
         INSERT INTO fines (player_id, match_id, reason, amount)
-        VALUES (${playerId}, ${match.id}, 'Retard', ${LATE_FINE_EUR})
+        SELECT ${playerId}, ${match.id}, 'Retard', ${LATE_FINE_EUR}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM fines
+          WHERE player_id = ${playerId} AND match_id = ${match.id}
+            AND reason = 'Retard' AND paid = FALSE
+        )
       `;
     }
-    res.json({ success: true, attendance: rows[0], late });
+    // Si l'intention bascule à "non" ou "peut-être", supprimer une éventuelle amende impayée
+    if (intent !== 'yes') {
+      await sql`
+        DELETE FROM fines
+        WHERE match_id = ${match.id} AND player_id = ${playerId} AND paid = FALSE
+      `;
+    }
+
+    res.json({ success: true, attendance: rows[0], late, status });
   } catch (e) {
-    if (e.message.includes('unique')) return res.status(409).json({ error: 'Déjà inscrit pour ce match' });
-    res.status(500).json({ error: 'Erreur vote' });
+    console.error('vote error:', e);
+    res.status(500).json({ error: 'Erreur vote: ' + (e.message || 'inconnue') });
   }
 });
 
@@ -153,21 +212,19 @@ app.delete('/api/vote', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Teams (snake draft) — now with starters/subs split + positions
+// Teams (snake draft) — format unique : 11 vs 11
 app.get('/api/teams/:matchId', async (req, res) => {
   const matchId = parseInt(req.params.matchId, 10);
+  // On ne prend que les "yes" (registered/late/present), pas les "maybe" ni "absent"
   const rows = await sql`
     SELECT p.id, p.name, p.rating, a.position
     FROM attendances a
     JOIN players p ON p.id = a.player_id
-    WHERE a.match_id = ${matchId} AND a.status <> 'absent'
+    WHERE a.match_id = ${matchId} AND a.status IN ('registered','present','late')
     ORDER BY p.rating DESC, p.name ASC
   `;
   const count = rows.length;
-  const format =
-    count >= 22 ? { type: 'Grand Terrain', format: '11 vs 11', perTeam: 11 } :
-    count >= 14 ? { type: 'Terrain Réduit', format: '7 vs 7',   perTeam: 7  } :
-                  { type: 'Petit Goal',    format: '5 vs 5',   perTeam: 5  };
+  const format = { type: 'Grand Terrain', format: '11 vs 11', perTeam: PER_TEAM };
 
   const teams = [[], []];
   rows.forEach((p, i) => {
@@ -192,7 +249,7 @@ app.get('/api/teams/:matchId', async (req, res) => {
 });
 
 // Match result (score) — admin sets final score
-app.post('/api/match/:id/result', async (req, res) => {
+app.post('/api/match/:id/result', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { teamA, teamB } = req.body;
   const rows = await sql`
@@ -224,8 +281,8 @@ app.get('/api/match/last', async (_req, res) => {
   res.json({ match, scorers });
 });
 
-// Goals
-app.post('/api/goals', async (req, res) => {
+// Goals — admin only
+app.post('/api/goals', requireAdmin, async (req, res) => {
   const { matchId, playerId, goals = 0, assists = 0 } = req.body;
   const rows = await sql`
     INSERT INTO goals (match_id, player_id, goals, assists)
@@ -278,8 +335,8 @@ app.get('/api/stats/attendance', async (_req, res) => {
   res.json(rows);
 });
 
-// Fines / caisse
-app.get('/api/fines', async (_req, res) => {
+// Fines / caisse — TOUT en admin only (lecture comprise : section privée)
+app.get('/api/fines', requireAdmin, async (_req, res) => {
   const rows = await sql`
     SELECT f.*, p.name FROM fines f JOIN players p ON p.id = f.player_id
     ORDER BY f.created_at DESC
@@ -287,13 +344,13 @@ app.get('/api/fines', async (_req, res) => {
   res.json(rows);
 });
 
-app.post('/api/fines/:id/pay', async (req, res) => {
+app.post('/api/fines/:id/pay', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const rows = await sql`UPDATE fines SET paid = TRUE WHERE id = ${id} RETURNING *`;
   res.json(rows[0]);
 });
 
-app.post('/api/fines', async (req, res) => {
+app.post('/api/fines', requireAdmin, async (req, res) => {
   const { playerId, reason, amount } = req.body;
   const rows = await sql`
     INSERT INTO fines (player_id, reason, amount) VALUES (${playerId}, ${reason}, ${amount})
@@ -302,17 +359,17 @@ app.post('/api/fines', async (req, res) => {
   res.json(rows[0]);
 });
 
-app.get('/api/expenses', async (_req, res) => {
+app.get('/api/expenses', requireAdmin, async (_req, res) => {
   res.json(await sql`SELECT * FROM expenses ORDER BY created_at DESC`);
 });
 
-app.post('/api/expenses', async (req, res) => {
+app.post('/api/expenses', requireAdmin, async (req, res) => {
   const { reason, amount } = req.body;
   const rows = await sql`INSERT INTO expenses (reason, amount) VALUES (${reason}, ${amount}) RETURNING *`;
   res.json(rows[0]);
 });
 
-app.get('/api/caisse', async (_req, res) => {
+app.get('/api/caisse', requireAdmin, async (_req, res) => {
   const [{ paid_fines }] = await sql`SELECT COALESCE(SUM(amount),0)::float AS paid_fines FROM fines WHERE paid = TRUE`;
   const [{ due_fines }]  = await sql`SELECT COALESCE(SUM(amount),0)::float AS due_fines  FROM fines WHERE paid = FALSE`;
   const [{ expenses }]   = await sql`SELECT COALESCE(SUM(amount),0)::float AS expenses   FROM expenses`;

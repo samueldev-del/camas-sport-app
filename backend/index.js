@@ -1,19 +1,3 @@
-// Modifier la date ou l'heure du match actuel (Admin)
-app.patch('/api/match/:id', requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const { match_date, kickoff_local } = req.body;
-  try {
-    if (match_date) {
-      await sql`UPDATE matches SET match_date = ${match_date} WHERE id = ${id}`;
-    }
-    if (kickoff_local) {
-      await sql`UPDATE matches SET kickoff_local = ${kickoff_local} WHERE id = ${id}`;
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: 'Erreur lors de la modification du match' });
-  }
-});
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -110,7 +94,6 @@ app.post('/api/players', async (req, res) => {
 });
 
 // Modification du code PIN par le joueur lui-même
-// Sécurité : exige l'ancien PIN, sauf si le joueur n'en avait pas encore (PIN vide).
 app.patch('/api/players/:id/pin', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
@@ -128,7 +111,6 @@ app.patch('/api/players/:id/pin', async (req, res) => {
     const [player] = await sql`SELECT pin FROM players WHERE id = ${id}`;
     if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
 
-    // Si un PIN existe déjà, on vérifie l'ancien. Sinon (premier set), pas besoin.
     if (player.pin && player.pin !== oldPin) {
       return res.status(403).json({ error: 'Ancien code PIN incorrect' });
     }
@@ -175,6 +157,23 @@ app.get('/api/match/current', async (_req, res) => {
   res.json({ match, attendees });
 });
 
+// Modifier la date ou l'heure du match actuel (Admin)
+app.patch('/api/match/:id', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { match_date, kickoff_local } = req.body;
+  try {
+    if (match_date) {
+      await sql`UPDATE matches SET match_date = ${match_date} WHERE id = ${id}`;
+    }
+    if (kickoff_local) {
+      await sql`UPDATE matches SET kickoff_local = ${kickoff_local} WHERE id = ${id}`;
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur lors de la modification du match' });
+  }
+});
+
 // Vote — 3 intentions possibles : 'yes' (vient), 'maybe' (peut-être), 'no' (absent)
 app.post('/api/vote', async (req, res) => {
   const { playerId, position, intent = 'yes' } = req.body;
@@ -189,19 +188,13 @@ app.post('/api/vote', async (req, res) => {
   const match = await getOrCreateCurrentMatch();
   const late = intent === 'yes' ? await isLateForMatch(match) : false;
 
-  // Mapping intent → status DB
-  // yes  → 'late' si en retard sinon 'registered'
-  // maybe → 'maybe'
-  // no    → 'absent'
   const status = intent === 'no'    ? 'absent'
               : intent === 'maybe' ? 'maybe'
               : (late ? 'late' : 'registered');
 
-  // Position obligatoire seulement si "yes"
   const finalPosition = intent === 'yes' ? (position || null) : null;
 
   try {
-    // Upsert : si le joueur change d'avis, on met à jour
     const rows = await sql`
       INSERT INTO attendances (match_id, player_id, status, is_late, arrival_time, position)
       VALUES (${match.id}, ${playerId}, ${status}, ${late},
@@ -215,7 +208,6 @@ app.post('/api/vote', async (req, res) => {
       RETURNING *
     `;
 
-    // Amende retard uniquement si "yes" + en retard, et pas déjà créée
     if (intent === 'yes' && late) {
       await sql`
         INSERT INTO fines (player_id, match_id, reason, amount)
@@ -227,7 +219,6 @@ app.post('/api/vote', async (req, res) => {
         )
       `;
     }
-    // Si l'intention bascule à "non" ou "peut-être", supprimer une éventuelle amende impayée
     if (intent !== 'yes') {
       await sql`
         DELETE FROM fines
@@ -265,7 +256,6 @@ app.delete('/api/vote', async (req, res) => {
 // Teams (snake draft) — format unique : 11 vs 11
 app.get('/api/teams/:matchId', async (req, res) => {
   const matchId = parseInt(req.params.matchId, 10);
-  // On ne prend que les "yes" (registered/late/present), pas les "maybe" ni "absent"
   const rows = await sql`
     SELECT p.id, p.name, p.rating, a.position
     FROM attendances a
@@ -355,7 +345,7 @@ app.get('/api/goals/:matchId', async (req, res) => {
   res.json(rows);
 });
 
-// Stats — incluent désormais la date de la dernière activité (traçabilité)
+// Stats
 app.get('/api/stats/scorers', async (_req, res) => {
   const rows = await sql`
     SELECT p.id, p.name,
@@ -389,7 +379,6 @@ app.get('/api/stats/attendance', async (_req, res) => {
   res.json(rows);
 });
 
-// Plage temporelle de la saison (1er match → aujourd'hui)
 app.get('/api/stats/season', async (_req, res) => {
   try {
     const [{ first, last, total }] = await sql`
@@ -400,7 +389,7 @@ app.get('/api/stats/season', async (_req, res) => {
   } catch { res.json({ first: null, last: null, total: 0 }); }
 });
 
-// Fines / caisse — TOUT en admin only (lecture comprise : section privée)
+// Fines / caisse
 app.get('/api/fines', requireAdmin, async (_req, res) => {
   const rows = await sql`
     SELECT f.*, p.name FROM fines f JOIN players p ON p.id = f.player_id
@@ -454,7 +443,6 @@ app.get('/api/announcements', async (_req, res) => {
     `;
     res.json(rows);
   } catch (e) {
-    // Table pas encore migrée : on renvoie [] au lieu de planter
     res.json([]);
   }
 });
@@ -462,27 +450,32 @@ app.get('/api/announcements', async (_req, res) => {
 app.post('/api/announcements', requireAdmin, async (req, res) => {
   const { title, body, pinned = false } = req.body;
   if (!body || !body.trim()) return res.status(400).json({ error: 'Texte requis' });
-  const rows = await sql`
-    INSERT INTO announcements (title, body, pinned)
-    VALUES (${title?.trim() || null}, ${body.trim()}, ${!!pinned})
-    RETURNING id, title, body, pinned, created_at
-  `;
-  res.json(rows[0]);
+  
+  try {
+    const rows = await sql`
+      INSERT INTO announcements (title, body, pinned)
+      VALUES (${title?.trim() || null}, ${body.trim()}, ${!!pinned})
+      RETURNING id, title, body, pinned, created_at
+    `;
+    res.json(rows[0]);
+  } catch (e) {
+    console.error("Erreur d'ajout de l'annonce:", e);
+    res.status(500).json({ error: "Erreur serveur : " + e.message });
+  }
 });
 
 app.patch('/api/announcements/:id', requireAdmin, async (req, res) => {
   const { title, body, pinned } = req.body;
-  const fields = [];
-  if (title !== undefined) fields.push(sql`title = ${title?.trim() || null}`);
-  if (body !== undefined)  fields.push(sql`body = ${body?.trim() || ''}`);
-  if (pinned !== undefined) fields.push(sql`pinned = ${!!pinned}`);
-  if (fields.length === 0) return res.status(400).json({ error: 'Aucun champ à modifier' });
-  // neon-serverless ne supporte pas un set dynamique → on fait simple :
-  if (title !== undefined) await sql`UPDATE announcements SET title = ${title?.trim() || null} WHERE id = ${req.params.id}`;
-  if (body !== undefined)  await sql`UPDATE announcements SET body  = ${body?.trim()    || ''}   WHERE id = ${req.params.id}`;
-  if (pinned !== undefined) await sql`UPDATE announcements SET pinned = ${!!pinned}             WHERE id = ${req.params.id}`;
-  const [row] = await sql`SELECT id, title, body, pinned, created_at FROM announcements WHERE id = ${req.params.id}`;
-  res.json(row);
+  try {
+    if (title !== undefined) await sql`UPDATE announcements SET title = ${title?.trim() || null} WHERE id = ${req.params.id}`;
+    if (body !== undefined)  await sql`UPDATE announcements SET body  = ${body?.trim()    || ''}   WHERE id = ${req.params.id}`;
+    if (pinned !== undefined) await sql`UPDATE announcements SET pinned = ${!!pinned}             WHERE id = ${req.params.id}`;
+    const [row] = await sql`SELECT id, title, body, pinned, created_at FROM announcements WHERE id = ${req.params.id}`;
+    res.json(row);
+  } catch (e) {
+    console.error("Erreur mise à jour annonce:", e);
+    res.status(500).json({ error: "Erreur serveur : " + e.message });
+  }
 });
 
 app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
@@ -493,7 +486,6 @@ app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
 // ========================================================
 // MAN OF THE MATCH — vote du joueur du jour
 // ========================================================
-// POST { matchId, voterId, votedId } — un upsert par votant/match
 app.post('/api/motm/vote', async (req, res) => {
   const { matchId, voterId, votedId } = req.body;
   if (!matchId || !voterId || !votedId) {
@@ -515,7 +507,6 @@ app.post('/api/motm/vote', async (req, res) => {
   }
 });
 
-// GET /api/motm/:matchId — classement du vote pour ce match
 app.get('/api/motm/:matchId', async (req, res) => {
   try {
     const rows = await sql`
@@ -533,7 +524,6 @@ app.get('/api/motm/:matchId', async (req, res) => {
   }
 });
 
-// GET /api/motm/me/:matchId/:voterId — récupère le vote du votant (pour pré-cocher l'UI)
 app.get('/api/motm/me/:matchId/:voterId', async (req, res) => {
   try {
     const [row] = await sql`
@@ -546,7 +536,6 @@ app.get('/api/motm/me/:matchId/:voterId', async (req, res) => {
   }
 });
 
-// GET /api/motm/last — vainqueur du dernier match terminé
 app.get('/api/motm/last', async (_req, res) => {
   try {
     const last = await sql`SELECT id, match_date FROM matches WHERE status = 'done' ORDER BY match_date DESC LIMIT 1`;
@@ -566,8 +555,7 @@ app.get('/api/motm/last', async (_req, res) => {
 });
 
 // ========================================================
-// HISTORIQUE DES MATCHS — résultats classés par dimanche
-// (lecture publique : tout le monde voit le score, personne ne le modifie)
+// HISTORIQUE DES MATCHS 
 // ========================================================
 app.get('/api/match/history', async (_req, res) => {
   try {
@@ -598,9 +586,8 @@ app.get('/api/match/history', async (_req, res) => {
 });
 
 // ========================================================
-// PLANNING — calendrier admin : liste, création manuelle de matchs
+// PLANNING — calendrier admin
 // ========================================================
-// Liste tous les matchs (passés + futurs) — ADMIN
 app.get('/api/match/calendar', requireAdmin, async (_req, res) => {
   const rows = await sql`
     SELECT id, match_date, kickoff_local, status, notes,
@@ -612,7 +599,6 @@ app.get('/api/match/calendar', requireAdmin, async (_req, res) => {
   res.json(rows);
 });
 
-// Crée (ou récupère) un match pour une date donnée — ADMIN
 app.post('/api/match/schedule', requireAdmin, async (req, res) => {
   const { date, kickoff = '10:00', notes = null } = req.body || {};
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -633,7 +619,6 @@ app.post('/api/match/schedule', requireAdmin, async (req, res) => {
   }
 });
 
-// Supprime un match planifié (uniquement si pas encore "done") — ADMIN
 app.delete('/api/match/:id', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
@@ -648,7 +633,7 @@ app.delete('/api/match/:id', requireAdmin, async (req, res) => {
 });
 
 // ========================================================
-// PHOTO + ÉQUIPE GAGNANTE — admin renseigne pour la galerie publique
+// PHOTO + ÉQUIPE GAGNANTE
 // ========================================================
 app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -675,7 +660,6 @@ app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
   }
 });
 
-// Galerie publique — derniers vainqueurs avec photo
 app.get('/api/match/gallery', async (_req, res) => {
   try {
     const rows = await sql`
@@ -690,7 +674,7 @@ app.get('/api/match/gallery', async (_req, res) => {
 });
 
 // ========================================================
-// CONSENT — journalisation RGPD/DSGVO (optionnel mais légalement utile)
+// CONSENT 
 // ========================================================
 const crypto = require('crypto');
 app.post('/api/consent', async (req, res) => {
@@ -708,9 +692,7 @@ app.post('/api/consent', async (req, res) => {
 });
 
 // ========================================================
-// PLAYER PROFILE — agrégats pour la carte joueur (FUT-style)
-// Renvoie : buts, passes, présences, retards, MotM gagnés,
-//          dette (amendes non payées), ratio de présence
+// PLAYER PROFILE 
 // ========================================================
 app.get('/api/players/:id/profile', async (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -720,14 +702,12 @@ app.get('/api/players/:id/profile', async (req, res) => {
     const [player] = await sql`SELECT id, name, rating FROM players WHERE id = ${id}`;
     if (!player) return res.status(404).json({ error: 'Player not found' });
 
-    // Buts / passes
     const [g] = await sql`
       SELECT COALESCE(SUM(goals),0)::int AS goals,
              COALESCE(SUM(assists),0)::int AS assists,
              COUNT(*)::int AS scoring_apps
       FROM goals WHERE player_id = ${id}
     `;
-    // Présences
     const [att] = await sql`
       SELECT COUNT(*)::int AS total,
              SUM(CASE WHEN is_late THEN 1 ELSE 0 END)::int AS lates,
@@ -735,10 +715,8 @@ app.get('/api/players/:id/profile', async (req, res) => {
              SUM(CASE WHEN status IN ('present','registered','late') THEN 1 ELSE 0 END)::int AS shows
       FROM attendances WHERE player_id = ${id}
     `;
-    // Total matches joués par le club (toutes données confondues)
     const [{ total_matches }] = await sql`SELECT COUNT(*)::int AS total_matches FROM matches WHERE status = 'done'`;
 
-    // MotM gagnés (1er au classement de chaque match terminé)
     let motmWins = 0;
     try {
       const wins = await sql`
@@ -752,7 +730,6 @@ app.get('/api/players/:id/profile', async (req, res) => {
       motmWins = wins[0]?.wins || 0;
     } catch { /* table peut être absente */ }
 
-    // Dette = amendes non payées
     let dueAmount = 0;
     try {
       const [d] = await sql`SELECT COALESCE(SUM(amount),0)::float AS due FROM fines WHERE player_id = ${id} AND paid = false`;
@@ -778,7 +755,6 @@ app.get('/api/players/:id/profile', async (req, res) => {
   }
 });
 
-// Démarre le serveur uniquement en local (pas en environnement serverless Vercel)
 if (require.main === module) {
   app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
 }

@@ -29,8 +29,8 @@ async function req(path, { method = 'GET', body } = {}) {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
-  } catch (e) {
-    throw new Error('Réseau indisponible — réessaie dans un instant');
+  } catch (err) {
+    throw new Error('Réseau indisponible — réessaie dans un instant', { cause: err });
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -69,6 +69,20 @@ export const api = {
 
   scorers:         () => req('/api/stats/scorers'),
   attendanceStats: () => req('/api/stats/attendance'),
+  seasonRange:     () => req('/api/stats/season'),
+
+  // Historique public des matchs (lecture seule, score + buteurs par dimanche)
+  matchHistory:    () => req('/api/match/history'),
+  // Galerie photos des équipes vainqueurs (public)
+  matchGallery:    () => req('/api/match/gallery'),
+
+  // Calendrier admin
+  matchCalendar:   () => req('/api/match/calendar'),
+  scheduleMatch:   (date, kickoff = '10:00', notes = null) =>
+                     req('/api/match/schedule', { method: 'POST', body: { date, kickoff, notes } }),
+  deleteMatch:     (id) => req(`/api/match/${id}`, { method: 'DELETE' }),
+  setMatchPhoto:   (id, photoUrl, winnerTeam) =>
+                     req(`/api/match/${id}/photo`, { method: 'PATCH', body: { photoUrl, winnerTeam } }),
 
   fines:           () => req('/api/fines'),
   addFine:         (body) => req('/api/fines', { method: 'POST', body }),
@@ -102,4 +116,7 @@ export const api = {
     if (!r.ok) throw new Error(d.error || 'Code admin invalide');
     return d;
   }),
+
+  // Ajout de la route pour modifier le match (admin)
+  updateMatch:     (id, data) => req(`/api/match/${id}`, { method: 'PATCH', body: data }),
 };

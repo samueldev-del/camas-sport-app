@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 /* ====== FIFA Player Card Premium Style ====== */
 .fut-card-container {
@@ -99,7 +100,6 @@
    CAMAS Sport — Tableau de bord professionnel
    Inspired by the CamAS e.V. dashboard mockup
    ============================================== */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
   --green:      #2e7d32;

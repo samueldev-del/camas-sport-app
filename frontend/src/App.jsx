@@ -1386,6 +1386,32 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
     onSetMatchPhoto(match.id, photoUrl.trim(), winnerTeam);
   };
 
+  // NOUVEAU : La magie qui compresse la photo
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // compresse pour le mobile
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        setPhotoUrl(compressedBase64); // Stocke l'image compressée dans le state
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <>
       <section className="panel admin-card">
@@ -1452,17 +1478,20 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
               <span>🤝 {tr('winner_draw')}</span>
             </label>
           </div>
-          <label style={{ marginTop: 12 }}>{tr('admin_match_photo')}</label>
+          
+          {/* LE NOUVEAU BOUTON D'UPLOAD */}
+          <label style={{ marginTop: 12 }}>Sélectionner une photo depuis la galerie</label>
           <input
-            type="url"
-            value={photoUrl}
-            onChange={e => setPhotoUrl(e.target.value)}
-            placeholder={tr('admin_match_photo_ph')}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoSelect}
+            style={{ marginBottom: '10px', display: 'block' }}
           />
-          <p className="hint-text">{tr('admin_match_photo_hint')}</p>
+          <p className="hint-text">L'image sera automatiquement compressée pour ne pas saturer le serveur.</p>
+          
           {photoUrl && (
-            <div className="photo-preview">
-              <img src={photoUrl} alt="preview" onError={e => { e.target.style.display = 'none'; }} />
+            <div className="photo-preview" style={{ textAlign: 'center', marginBottom: '15px' }}>
+              <img src={photoUrl} alt="preview" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '300px', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
             </div>
           )}
           <div className="row-actions">

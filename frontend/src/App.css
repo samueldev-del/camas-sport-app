@@ -2346,18 +2346,21 @@ h1, h2, h3, h4 {
     background: #0e1a22;
     border-top: 1px solid rgba(255,255,255,0.08);
     color: rgba(255,255,255,0.70);
-    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    padding: 16px 16px 18px;
     gap: 12px;
-    font-size: 0.86rem;
+    font-size: 0.92rem;
+    /* Pousse la barre légale au-dessus de la nav fixe du bas */
+    margin-bottom: calc(70px + var(--safe-bottom));
   }
   .legal-link {
     color: #aede9a;
     text-decoration: underline;
-    font-weight: 600;
-    padding: 6px 8px;
+    font-weight: 700;
+    padding: 8px 10px;
+    font-size: 0.94rem;
   }
   .legal-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
-  .legal-copy { color: rgba(255,255,255,0.55); font-size: 0.82rem; }
+  .legal-copy { color: rgba(255,255,255,0.65); font-size: 0.86rem; flex-basis: 100%; text-align: center; margin-top: 2px; }
 }
 
 @media (max-width: 480px) {
@@ -2367,8 +2370,22 @@ h1, h2, h3, h4 {
   .footer-block p { font-size: 0.92rem; }
   .footer-icon { width: 44px; height: 44px; }
   .footer-icon svg { width: 20px; height: 20px; }
-  .legal-bar { font-size: 0.82rem; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
-  .legal-copy { font-size: 0.78rem; flex-basis: 100%; text-align: center; }
+  .legal-bar {
+    font-size: 0.88rem;
+    padding: 14px 14px 16px;
+    gap: 10px;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 1000;
+    background: #0e1a22;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.70);
+    width: 100vw;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.10);
+  }
+  .legal-link { padding: 7px 9px; font-size: 0.90rem; }
+  .legal-copy { font-size: 0.82rem; flex-basis: 100%; text-align: center; margin-top: 2px; }
+  body { padding-bottom: 70px !important; }
 }
 
 

@@ -1,11 +1,21 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// En production (Vercel) : on utilise le chemin relatif — la function serverless est
+// servie sur le même domaine sous /api.
+// En dev : Vite proxy redirige /api/* vers http://localhost:3000 (cf. vite.config.js).
+// Possibilité d'override via VITE_API_URL (ex: http://192.168.1.10:3000 pour tester sur téléphone).
+const BASE = import.meta.env.VITE_API_URL || '';
 
 async function req(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    // Erreur réseau : on donne un message clair
+    throw new Error('Réseau indisponible — réessaie dans un instant');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;

@@ -29,16 +29,18 @@ export default defineConfig({
         categories: ['sports', 'lifestyle', 'productivity'],
         lang: 'fr',
         icons: [
-          { src: 'favicon.svg',       sizes: 'any',      type: 'image/svg+xml', purpose: 'any' },
-          { src: 'icon-192.png',      sizes: '192x192',  type: 'image/png',     purpose: 'any' },
-          { src: 'icon-512.png',      sizes: '512x512',  type: 'image/png',     purpose: 'any' },
-          { src: 'maskable-icon.svg', sizes: 'any',      type: 'image/svg+xml', purpose: 'maskable' },
-          { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png',  purpose: 'any' },
+          { src: 'favicon.svg',          sizes: 'any',     type: 'image/svg+xml', purpose: 'any' },
+          { src: 'icon-192.png',         sizes: '192x192', type: 'image/png',     purpose: 'any' },
+          { src: 'icon-512.png',         sizes: '512x512', type: 'image/png',     purpose: 'any' },
+          { src: 'maskable-icon.svg',    sizes: 'any',     type: 'image/svg+xml', purpose: 'maskable' },
+          { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png',     purpose: 'any' },
         ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,webmanifest,woff2}'],
         navigateFallback: '/index.html',
+        // ⚠ /api/* ne doit pas tomber sur le fallback (sinon retourne du HTML)
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
@@ -63,5 +65,14 @@ export default defineConfig({
       },
     }),
   ],
-  server: { host: true },
+  server: {
+    host: true,                     // accessible depuis le téléphone (même Wi-Fi)
+    proxy: {
+      // En dev : tous les /api/* partent vers le backend Express local
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

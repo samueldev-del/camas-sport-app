@@ -638,12 +638,16 @@ app.delete('/api/match/:id', requireAdmin, async (req, res) => {
 app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { photoUrl = null, winnerTeam = null } = req.body || {};
+  
   if (winnerTeam && !['A','B','draw'].includes(winnerTeam)) {
     return res.status(400).json({ error: 'winnerTeam doit être A, B ou draw' });
   }
-  if (photoUrl && !/^https?:\/\//i.test(photoUrl)) {
-    return res.status(400).json({ error: 'URL photo invalide (http/https requis)' });
+  
+  // NOUVEAU : On autorise "http" ET "data:image" (l'upload direct depuis la galerie)
+  if (photoUrl && !/^https?:\/\//i.test(photoUrl) && !/^data:image\//i.test(photoUrl)) {
+    return res.status(400).json({ error: 'Format de photo invalide' });
   }
+  
   try {
     const rows = await sql`
       UPDATE matches

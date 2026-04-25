@@ -1589,7 +1589,7 @@ function AdminPlanningPanel({ tr, lang, calendar, onSchedule, onDelete }) {
           <label>{tr('admin_plan_date')}</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           <label>{tr('admin_plan_kickoff')}</label>
-          <input type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} />
+          <input type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} required />
           <label>{tr('admin_plan_notes')}</label>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tr('admin_plan_notes_ph')} />
           <div className="row-actions">

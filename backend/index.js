@@ -319,4 +319,9 @@ app.get('/api/caisse', async (_req, res) => {
   res.json({ paid_fines, due_fines, expenses, balance: paid_fines - expenses });
 });
 
-app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
+// Démarre le serveur uniquement en local (pas en environnement serverless Vercel)
+if (require.main === module) {
+  app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
+}
+
+module.exports = app;

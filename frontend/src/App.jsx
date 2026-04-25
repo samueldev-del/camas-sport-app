@@ -112,7 +112,49 @@ const fmtShortDate = (iso, lang) => iso
   ? new Date(iso).toLocaleDateString(localeFor(lang), { timeZone: 'Europe/Berlin', day: '2-digit', month: 'short' })
   : '';
 
+// Définir les fonctions de chargement en dehors du composant pour stabilité
+function createLoadHome(setMatch, setAttendees, setPlayers, setLastMatch, setAnnouncements, setMotmLast, setGallery, setMotmResults) {
+  return async function loadHome() {
+    try {
+      const [m, ps, last, anns, ml, gal] = await Promise.all([
+        api.currentMatch(), api.listPlayers(), api.lastMatch(),
+        api.listAnnouncements().catch(() => []),
+        api.motmLast().catch(() => null),
+        api.matchGallery().catch(() => []),
+      ]);
+      setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
+      setAnnouncements(anns); setMotmLast(ml);
+      setGallery(gal);
+      // Load MotM results for current match
+      if (m.match?.id) {
+        try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
+      }
+    } catch (e) { console.warn(e); }
+  };
+}
+
+function createLoadTeams(match, setTeams, setMatchGoals) {
+  return async function loadTeams() {
+    if (!match) return;
+    try {
+      const [t, g] = await Promise.all([api.teams(match.id), api.matchGoals(match.id)]);
+      setTeams(t); setMatchGoals(g);
+    } catch (e) { console.warn(e); }
+  };
+}
+
 export default function App() {
+    // Fonction pour mettre à jour le match depuis l'admin (date, heure, notes)
+    const onUpdateMatch = async (fields) => {
+      if (!match) return;
+      try {
+        await api.updateMatch(match.id, fields);
+        await loadHome();
+        flash(tr('admin_match_updated'), 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
   const [lang, setLang] = useState(() => {
     try { return localStorage.getItem(LANG_KEY) || 'fr'; } catch { return 'fr'; }
   });
@@ -190,23 +232,7 @@ export default function App() {
     api.recordConsent('cookies', true).catch(() => { /* best effort */ });
   };
 
-  const loadHome = useCallback(async () => {
-    try {
-      const [m, ps, last, anns, ml, gal] = await Promise.all([
-        api.currentMatch(), api.listPlayers(), api.lastMatch(),
-        api.listAnnouncements().catch(() => []),
-        api.motmLast().catch(() => null),
-        api.matchGallery().catch(() => []),
-      ]);
-      setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
-      setAnnouncements(anns); setMotmLast(ml);
-      setGallery(gal);
-      // Load MotM results for current match
-      if (m.match?.id) {
-        try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
-      }
-    } catch (e) { console.warn(e); }
-  }, []);
+  const loadHome = createLoadHome(setMatch, setAttendees, setPlayers, setLastMatch, setAnnouncements, setMotmLast, setGallery, setMotmResults);
 
   const loadAdmin = useCallback(async () => {
     if (!isAdmin) return;
@@ -220,13 +246,7 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [isAdmin]);
 
-  const loadTeams = useCallback(async () => {
-    if (!match) return;
-    try {
-      const [t, g] = await Promise.all([api.teams(match.id), api.matchGoals(match.id)]);
-      setTeams(t); setMatchGoals(g);
-    } catch (e) { console.warn(e); }
-  }, [match]);
+  const loadTeams = createLoadTeams(match, setTeams, setMatchGoals);
 
   const loadStats = useCallback(async () => {
     const [s, a] = await Promise.all([api.scorers(), api.attendanceStats()]);
@@ -403,6 +423,7 @@ export default function App() {
                   try { await api.deleteMatch(id); await loadAdmin(); }
                   catch (e) { flash(e.message, 'err'); }
                 }}
+                onUpdateMatch={onUpdateMatch}
               />
             ) : (
               <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
@@ -582,7 +603,7 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
         results={motmResults} lastWinner={motmLast}
         onVote={onMotmVote}
       />
-      {/* Note: announcements et galerie sont rendues juste avant le footer (cf. App) */}
+      {/* Note: annonces et galerie sont rendues juste avant le footer (cf. App) */}
       {announcements && announcements.length > 0 && null}
       <div className="grid-top">
         <section className="panel presences-panel">
@@ -1263,6 +1284,7 @@ function AdminDashboard({
   onPay, onAddExpense, onAddFine,
   onSaveScore, onAddGoal, onSetMatchPhoto,
   onScheduleMatch, onDeleteMatch,
+  onUpdateMatch,
 }) {
   const [section, setSection] = useState('match');
 
@@ -1285,14 +1307,19 @@ function AdminDashboard({
       </section>
 
       {section === 'match' && (
-        <AdminMatchPanel
-          tr={tr} lang={lang}
-          match={match} teams={teams} matchGoals={matchGoals}
-          motmResults={motmResults} players={players}
-          onSaveScore={onSaveScore}
-          onAddGoal={onAddGoal}
-          onSetMatchPhoto={onSetMatchPhoto}
-        />
+        <section className="panel">
+          <div className="panel-head"><h2>⚽ Gestion du Match</h2></div>
+          {/* AJOUT DU FORMULAIRE COMPACT */}
+          <AdminMatchSettings tr={tr} match={match} onUpdateMatch={onUpdateMatch} />
+          <AdminMatchPanel
+            tr={tr} lang={lang}
+            match={match} teams={teams} matchGoals={matchGoals}
+            motmResults={motmResults} players={players}
+            onSaveScore={onSaveScore}
+            onAddGoal={onAddGoal}
+            onSetMatchPhoto={onSetMatchPhoto}
+          />
+        </section>
       )}
 
       {section === 'ann' && (
@@ -1944,7 +1971,7 @@ function MotMSection({ tr, lang, match, attendees, players, results, lastWinner,
           {voters.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
         <div className="row-actions">
-          <button type="submit" className="btn-primary" disabled={busy || !voterId || !votedId}>{tr('publish_btn')}</button>
+          <button type="submit" className="btn-primary" disabled={busy || !voterId || !votedId}>{busy ? '…' : '💾'}</button>
         </div>
       </form>
 
@@ -2061,3 +2088,38 @@ function CookieBanner({ tr, onAccept, onMore }) {
     </div>
   );
 }
+
+// ========================================================
+// FORMULAIRE COMPACT — AdminMatchSettings
+// ========================================================
+function AdminMatchSettings({ tr, match, onUpdateMatch }) {
+
+  const [date, setDate] = useState(match?.match_date ? match.match_date.slice(0, 10) : '');
+  const [kickoff, setKickoff] = useState(match?.kickoff_local ? match.kickoff_local.slice(0, 5) : '10:00');
+  const [notes, setNotes] = useState(match?.notes || '');
+  const [busy, setBusy] = useState(false);
+  // Plus de synchronisation automatique du state après le montage
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await onUpdateMatch({ match_date: date, kickoff_local: kickoff, notes });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!match) return null;
+
+  return (
+    <form className="compact-admin-form" onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+      <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ maxWidth: 120 }} required />
+      <input type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} style={{ maxWidth: 90 }} required />
+      <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder={tr('admin_plan_notes_ph')} style={{ flex: 1 }} />
+      <button type="submit" className="btn-primary" disabled={busy || !date || !kickoff}>{busy ? '…' : '💾'}</button>
+    </form>
+  );
+}
+
+// (fin du fichier)

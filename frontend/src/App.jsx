@@ -268,16 +268,33 @@ export default function App() {
         <div className="flag-stripe" />
         <footer className="footer">
           <div className="footer-block">
-            <strong>{tr('footer_stadium')}</strong>
-            <p>Hofener Straße 171<br/>70374 Stuttgart</p>
+            <div className="footer-icon footer-icon-stadium" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div>
+              <strong>{tr('footer_stadium')}</strong>
+              <p>Hofener Straße 171<br/>70374 Stuttgart</p>
+            </div>
           </div>
-          <div className="footer-block center">
-            <strong>{tr('footer_resp')}</strong>
-            <p>Olivier Saly<br/><span className="muted-txt">{tr('footer_resp_sub')}</span></p>
+          <div className="footer-block">
+            <div className="footer-icon footer-icon-resp" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+            </div>
+            <div>
+              <strong>{tr('footer_resp')}</strong>
+              <p>Olivier Saly<br/><span className="muted-txt">{tr('footer_resp_sub')}</span></p>
+            </div>
           </div>
-          <div className="footer-block right">
-            <strong>{tr('footer_paypal')}</strong>
-            <p>finances@camasev.com</p>
+          <div className="footer-block">
+            <div className="footer-icon footer-icon-pp" aria-hidden="true">
+              <PayPalIcon />
+            </div>
+            <div>
+              <strong>{tr('footer_paypal')}</strong>
+              <p>
+                <a className="footer-link" href="mailto:finances@camasev.com">finances@camasev.com</a>
+              </p>
+            </div>
           </div>
         </footer>
       </div>
@@ -288,6 +305,19 @@ export default function App() {
 
       {toast && <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
     </div>
+  );
+}
+
+/* ========================================================
+   PAYPAL ICON (inline SVG, palette officielle)
+   ======================================================== */
+function PayPalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-label="PayPal" role="img">
+      <path fill="#003087" d="M7.6 21.5h-3a.5.5 0 0 1-.5-.6L6.7 4.4a.7.7 0 0 1 .7-.6h6.5c2.6 0 4.5.6 5.5 1.7.6.7.9 1.6.8 2.7 0 .1 0 .2-.1.3l-.1.6c-.5 3.6-2.9 4.9-6.2 4.9h-1.2a.7.7 0 0 0-.7.6l-.7 4.7v.2a.5.5 0 0 1-.5.4H7.9c-.2 0-.3-.1-.3-.3v-.5z"/>
+      <path fill="#0070E0" d="M19.6 8.5c0 .1 0 .2-.1.3l-.1.6c-.5 3.6-2.9 4.9-6.2 4.9h-1.2a.7.7 0 0 0-.7.6l-.9 5.7a.4.4 0 0 0 .4.5h2.9a.6.6 0 0 0 .6-.5l.1-.2.6-3.5v-.2a.6.6 0 0 1 .6-.5h.4c2.9 0 5.1-1.1 5.7-4.5.3-1.4.1-2.6-.6-3.4-.2-.2-.3-.4-.5-.5z"/>
+      <path fill="#001C64" d="M19 8.2a8 8 0 0 0-.7-.2 8.6 8.6 0 0 0-1.5-.1h-4.2a.6.6 0 0 0-.6.5L11 14.3l-.1.2c.1-.4.4-.6.7-.6h1.2c3.4 0 6-1.4 6.6-5.4 0-.1 0-.2.1-.3z"/>
+    </svg>
   );
 }
 
@@ -556,7 +586,6 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
   const [mode, setMode] = useState('pick'); // pick | new | position
   const [selected, setSelected] = useState(null);
   const [newName, setNewName] = useState('');
-  const [rating, setRating] = useState(5);
   const [position, setPosition] = useState(null);
   const voted = new Set(attendees.map(a => a.player_id));
   const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
@@ -575,7 +604,8 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
     e.preventDefault();
     if (!newName.trim()) return;
     try {
-      const p = await onCreate(newName.trim(), Number(rating));
+      // Niveau par défaut 5 — l'admin pourra l'ajuster ensuite via la page Joueurs.
+      const p = await onCreate(newName.trim(), 5);
       setSelected(p);
       if (needsPosition) setMode('position');
       else await onConfirm(p.id, intent, null);
@@ -629,8 +659,6 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
           <form className="new-form" onSubmit={submitNew}>
             <label>{tr('full_name')}</label>
             <input value={newName} onChange={e => setNewName(e.target.value)} autoFocus placeholder="Ex: Samuel Djommou" />
-            <label>{tr('level')} : <strong>{rating}</strong>/10</label>
-            <input type="range" min="1" max="10" step="0.5" value={rating} onChange={e => setRating(e.target.value)} />
             <div className="row-actions">
               <button type="button" className="btn-ghost" onClick={() => setMode('pick')}>{tr('back')}</button>
               <button type="submit" className="btn-primary">{tr('next')}</button>

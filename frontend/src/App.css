@@ -583,14 +583,16 @@ table { width: 100%; border-collapse: collapse; }
 .tile-avatar.plus { background: var(--border); color: var(--ink-2); font-size: 1.3rem; }
 
 /* ---------- Balance hero (caisse) ---------- */
-.balance-hero {
+/* High specificity (.panel.balance-hero) to override v3 panel background gradient */
+.panel.balance-hero {
   text-align: center;
   background: linear-gradient(135deg, var(--green) 0%, var(--green-d) 100%);
   color: white;
   border: none;
   padding: 24px;
+  box-shadow: 0 8px 24px rgba(46,125,50,0.30);
 }
-.balance-hero.negative { background: linear-gradient(135deg, var(--red), var(--red-d)); }
+.panel.balance-hero.negative { background: linear-gradient(135deg, var(--red), var(--red-d)); box-shadow: 0 8px 24px rgba(198,40,40,0.30); }
 .balance-hero .balance-label {
   font-size: 0.72rem;
   letter-spacing: 2px;

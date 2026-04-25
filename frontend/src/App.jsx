@@ -8,76 +8,78 @@ import './App.css';
    PLAYER CARD MODAL — Carte joueur premium (style FUT)
    Charge le profil agrégé depuis /api/players/:id/profile
    ======================================================== */
-function PlayerCardModal({ player, tr, onClose }) {
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancel = false;
-    setLoading(true);
-    api.playerProfile(player.player_id || player.id)
-      .then(p => { if (!cancel) setProfile(p); })
-      .catch(() => { /* fallback to local fields */ })
-      .finally(() => { if (!cancel) setLoading(false); });
-    return () => { cancel = true; };
-  }, [player.player_id, player.id]);
+/* ========================================================
+   PLAYER CARD MODAL (FUT) + CHANGEMENT DE PIN
+   ======================================================== */
+function PlayerCardModal({ player, onClose }) {
+  const [editPin, setEditPin] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  // Source de vérité : profil backend > données locales
-  const data = profile || player;
-  const goals    = data.goals    || 0;
-  const assists  = data.assists  || 0;
-  const shows    = data.shows    || 0;
-  const lates    = data.lates    || 0;
-  const motm     = data.motm_wins || 0;
-  const due      = Number(data.due_amount || 0);
-  const ratio    = data.presence_ratio !== undefined
-    ? data.presence_ratio
-    : (data.total_matches > 0 ? Math.round((shows / data.total_matches) * 100) : 0);
-  const punct    = data.punctuality !== undefined
-    ? data.punctuality
-    : (shows ? Math.round(((shows - lates) / shows) * 100) : 0);
+  const punct = player.shows ? Math.round(((player.shows - player.lates) / player.shows) * 100) : 0;
+
+  const handleUpdatePin = async (e) => {
+    e.preventDefault();
+    if (oldPin.length !== 4 || newPin.length !== 4) return alert("Les codes doivent faire 4 chiffres.");
+    setBusy(true);
+    try {
+      // Appel à l'API pour changer le PIN
+      await api.updatePin(player.id, oldPin, newPin);
+      alert("✅ Code PIN modifié avec succès !");
+      setEditPin(false);
+      setOldPin('');
+      setNewPin('');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
       <div className="fut-card-container animate-pop" onClick={e => e.stopPropagation()}>
         <div className="fut-card">
           <div className="fut-card-top">
-            <div className="fut-rating">{(player.rating || data.rating || 5).toFixed(1)}</div>
+            <div className="fut-rating">{(player.rating || 5).toFixed(1)}</div>
             <div className="fut-pos">{player.position || 'MIL'}</div>
             <div className="fut-flag">🇨🇲</div>
-            <div className="fut-logo"><img src={logoCamas} alt="CAMAS" /></div>
           </div>
-
+          
           <div className="fut-avatar">
             {player.name.slice(0, 1).toUpperCase()}
           </div>
           <div className="fut-name">{player.name.split(' ')[0].toUpperCase()}</div>
 
-          {motm > 0 && (
-            <div className="fut-trophy" title={tr('card_motm_trophies')}>
-              {Array.from({ length: Math.min(motm, 5) }).map((_, i) => <span key={i}>🏆</span>)}
-              {motm > 5 && <span className="fut-trophy-more">×{motm}</span>}
-            </div>
+          {/* VUE 2 : LE FORMULAIRE DE CHANGEMENT DE PIN */}
+          {editPin ? (
+            <form className="pin-fut-form" onSubmit={handleUpdatePin}>
+              <p className="pin-fut-title">Modifier mon code secret</p>
+              <input type="password" placeholder="Ancien (ex: 1234)" maxLength="4" inputMode="numeric" value={oldPin} onChange={e => setOldPin(e.target.value)} />
+              <input type="password" placeholder="Nouveau PIN" maxLength="4" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value)} />
+              <div className="row-actions" style={{ marginTop: '10px' }}>
+                <button type="button" className="btn-ghost" onClick={() => setEditPin(false)}>Annuler</button>
+                <button type="submit" className="btn-primary" disabled={busy || oldPin.length < 4 || newPin.length < 4}>Valider</button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="fut-stats-grid">
+                <div className="fut-stat"><span>{player.goals || 0}</span> BUT</div>
+                <div className="fut-stat"><span>{player.assists || 0}</span> PAS</div>
+                <div className="fut-stat"><span>{player.shows || 0}</span> PRS</div>
+                <div className="fut-stat"><span>{punct}%</span> PCT</div>
+              </div>
+              <button className="fut-pin-toggle" onClick={() => setEditPin(true)}>
+                🔒 Modifier mon code PIN
+              </button>
+            </>
           )}
 
-          <div className="fut-stats-grid">
-            <div className="fut-stat"><span>{goals}</span> {tr('card_goals')}</div>
-            <div className="fut-stat"><span>{assists}</span> {tr('card_assists')}</div>
-            <div className="fut-stat"><span>{shows}</span> {tr('card_shows')}</div>
-            <div className="fut-stat"><span>{ratio}%</span> {tr('card_ratio')}</div>
-            <div className="fut-stat"><span>{punct}%</span> {tr('card_punct')}</div>
-            <div className="fut-stat"><span>{motm}</span> {tr('card_motm')}</div>
-          </div>
-
-          {due > 0 && (
-            <div className="fut-debt" title={tr('card_debt_title')}>
-              💰 {tr('card_debt')} : <strong>{due.toFixed(2)} €</strong>
-            </div>
-          )}
-
-          {loading && <div className="fut-loading">…</div>}
         </div>
-        <button className="btn-close-card" onClick={onClose} aria-label={tr('legal_close')}>✕</button>
+        <button className="btn-close-card" onClick={onClose}>✕</button>
       </div>
     </div>
   );
@@ -141,12 +143,7 @@ export default function App() {
   // Carte joueur sélectionné
   const [selectedPlayerCard, setSelectedPlayerCard] = useState(null);
 
-  // Ouvre la carte joueur
-  const openPlayerCard = (player) => {
-    const stats = scorers.find(s => s.id === player.player_id || s.id === player.id) || {};
-    const att = attStats.find(a => a.id === player.player_id || a.id === player.id) || {};
-    setSelectedPlayerCard({ ...player, ...stats, ...att });
-  };
+  // Ouvre la carte joueur (définie inline dans le rendu)
 
   const tr = useCallback((key, vars) => t(lang, key, vars), [lang]);
 
@@ -228,8 +225,6 @@ export default function App() {
     const [s, a] = await Promise.all([api.scorers(), api.attendanceStats()]);
     setScorers(s); setAttStats(a);
   }, []);
-
-  const loadCaisse = loadAdmin; // alias rétro-compat (utilisé par CaissePage)
 
   useLayoutEffect(() => {
     Promise.resolve().then(() => {
@@ -313,7 +308,7 @@ export default function App() {
           {tab === 'home' && (
             <HomePage
               tr={tr} lang={lang}
-              match={match} attendees={attendees} players={players} scorers={scorers} lastMatch={lastMatch}
+              match={match} attendees={attendees} players={players} scorers={scorers} attStats={attStats} setSelectedPlayerCard={setSelectedPlayerCard} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
               flash={flash}
               onConfirm={async (pid, intent, position, pin) => {
@@ -341,21 +336,13 @@ export default function App() {
             />
           )}
 
-          {tab === 'players' && <PlayersPage tr={tr} players={players} attendees={attendees} onReload={loadHome} flash={flash} />}
+          {tab === 'players' && <PlayersPage tr={tr} isAdmin={isAdmin} players={players} attendees={attendees} onReload={loadHome} flash={flash} />}
 
           {tab === 'teams' && (
             <StadiumPage
               tr={tr} isAdmin={isAdmin}
               teams={teams} match={match} goals={matchGoals} attendees={attendees}
               onReload={loadTeams}
-              onSaveScore={async (a, b) => {
-                try { await api.setResult(match.id, a, b); loadTeams(); loadHome(); flash(tr('score_saved')); }
-                catch (e) { flash(e.message, 'err'); }
-              }}
-              onAddGoal={async (playerId, goals, assists) => {
-                try { await api.recordGoals({ matchId: match.id, playerId, goals, assists }); loadTeams(); flash(tr('goal_saved')); }
-                catch (e) { flash(e.message, 'err'); }
-              }}
               onSetPosition={async (playerId, position) => {
                 try { await api.updatePosition(playerId, match.id, position); loadTeams(); loadHome(); }
                 catch (e) { flash(e.message, 'err'); }
@@ -531,7 +518,7 @@ function LockedSection({ tr, onUnlock }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, announcements, motmResults, motmLast, flash, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
+function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, flash, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -589,7 +576,11 @@ function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, ann
               )}
               {attendees.map(a => (
                 <tr key={a.id}>
-                  <td onClick={() => openPlayerCard(a)} className="clickable-name">{a.name}</td>
+                  <td onClick={() => {
+                    const stats = scorers.find(s => s.id === a.player_id || s.id === a.id) || {};
+                    const att = attStats.find(at => at.id === a.player_id || at.id === a.id) || {};
+                    setSelectedPlayerCard({ ...a, ...stats, ...att });
+                  }} className="clickable-name">{a.name}</td>
                   <td>
                     {a.status === 'maybe'
                       ? <span className="pos-tag pos-maybe">?</span>
@@ -632,6 +623,7 @@ function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, ann
               <span className="intent-lbl">{tr('vote_no')}</span>
             </button>
           </div>
+
 
           <div className="info-box info-border">
             <p>{tr('poll_closed')}</p>
@@ -750,6 +742,8 @@ function LastMatchCard({ tr, lang, lastMatch }) {
    ======================================================== */
 function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClose, onCreate }) {
   const [search, setSearch] = useState('');
+  // Cas spécial : intent === 'changepin' → on saute directement à la modification de PIN sans voter
+  const isChangePinFlow = intent === 'changepin';
   const needsPosition = intent === 'yes';
   const [mode, setMode] = useState('pick'); // pick | new | position | pin | changepin
   const [selected, setSelected] = useState(null);
@@ -772,9 +766,15 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
     try {
       await api.updatePin(selected.id, oldPinIn, newPinIn);
       flash?.(tr('pin_change_ok'), 'ok');
-      setPin(newPinIn);                 // pré-remplit le champ de validation
       setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
-      setMode('pin');                   // retour à la validation de présence
+      // Si on est arrivé ici via le bouton « Gérer mon PIN », on ferme la fenêtre.
+      // Sinon (flux classique de validation), on revient à l'étape PIN avec le nouveau code pré-rempli.
+      if (isChangePinFlow) {
+        onClose();
+      } else {
+        setPin(newPinIn);
+        setMode('pin');
+      }
     } catch (err) {
       flash?.(err.message || tr('pin_change_err_generic'), 'err');
     } finally {
@@ -787,31 +787,45 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
 
   const choosePlayer = (p) => {
     setSelected(p);
-    if (needsPosition) setMode('position');
-    else setMode('pin'); // On passe à l'étape PIN direct si pas besoin de position
+    if (isChangePinFlow) {
+      // Flux dédié « Gérer mon PIN » : on saute intent + position + validation
+      setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
+      setMode('changepin');
+    } else if (needsPosition) {
+      setMode('position');
+    } else {
+      setMode('pin'); // On passe à l'étape PIN direct si pas besoin de position
+    }
   };
 
   const submitNew = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
     try {
-      // Par défaut, le PIN d'un nouveau joueur sera 1234 (l'admin pourra changer)
       const p = await onCreate(newName.trim(), 5);
       setSelected(p);
-      if (needsPosition) setMode('position');
-      else setMode('pin');
+      if (isChangePinFlow) {
+        setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
+        setMode('changepin');
+      } else if (needsPosition) {
+        setMode('position');
+      } else {
+        setMode('pin');
+      }
     } catch { /* silent */ }
   };
 
   const headTitle =
+    isChangePinFlow && mode === 'pick' ? tr('pin_manage_picker') :
     mode === 'pick'      ? tr('who_confirms') :
     mode === 'new'       ? tr('new_player')   :
     mode === 'position'  ? tr('pick_position', { name: selected?.name || '' }) :
     mode === 'pin'       ? tr('pin_title') :
     mode === 'changepin' ? tr('pin_change_title') : '';
 
-  const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : 'intent-badge-no';
-  const intentBadgeLbl = intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
+  const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : intent === 'changepin' ? 'intent-badge-pin' : 'intent-badge-no';
+  const intentBadgeLbl = isChangePinFlow ? `🔒 ${tr('pin_manage_picker')}` :
+    intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
@@ -827,17 +841,28 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
           <>
             <input className="search" placeholder={tr('search_placeholder')} value={search} onChange={e => setSearch(e.target.value)} autoFocus />
             <div className="player-grid">
-              {filtered.map(p => (
-                <button key={p.id} className={`player-tile ${voted.has(p.id) ? 'disabled' : ''}`} disabled={voted.has(p.id)} onClick={() => choosePlayer(p)}>
-                  <div className="tile-avatar">{p.name.slice(0, 1).toUpperCase()}</div>
-                  <span>{p.name}</span>
-                  {voted.has(p.id) && <span className="mini-tag">✓</span>}
+              {filtered.map(p => {
+                // En flux changepin, on N'EXCLUT PAS les joueurs déjà inscrits (un joueur peut toujours modifier son PIN).
+                const blocked = !isChangePinFlow && voted.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    className={`player-tile ${blocked ? 'disabled' : ''}`}
+                    disabled={blocked}
+                    onClick={() => choosePlayer(p)}
+                  >
+                    <div className="tile-avatar">{p.name.slice(0, 1).toUpperCase()}</div>
+                    <span>{p.name}</span>
+                    {!isChangePinFlow && voted.has(p.id) && <span className="mini-tag">✓</span>}
+                  </button>
+                );
+              })}
+              {!isChangePinFlow && (
+                <button className="player-tile add" onClick={() => setMode('new')}>
+                  <div className="tile-avatar plus">+</div>
+                  <span>{tr('new_player')}</span>
                 </button>
-              ))}
-              <button className="player-tile add" onClick={() => setMode('new')}>
-                <div className="tile-avatar plus">+</div>
-                <span>{tr('new_player')}</span>
-              </button>
+              )}
             </div>
           </>
         )}
@@ -899,10 +924,12 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
           </form>
         )}
 
-        {/* ÉTAPE : CHANGEMENT DE CODE PIN */}
+        {/* ÉTAPE : CHANGEMENT DE CODE PIN — accessible depuis flux dédié OU étape pin */}
         {mode === 'changepin' && selected && (
           <form className="new-form" onSubmit={submitChangePin}>
-            <p className="pp-intro">{tr('pin_change_intro', { name: selected.name })}</p>
+            <p className="pp-intro">
+              {isChangePinFlow ? tr('pin_manage_intro') : tr('pin_change_intro', { name: selected.name })}
+            </p>
 
             <label className="pin-lbl">{tr('pin_change_old')}</label>
             <input
@@ -933,7 +960,13 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
             />
 
             <div className="row-actions">
-              <button type="button" className="btn-ghost" onClick={() => { setMode('pin'); }}>{tr('cancel')}</button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => isChangePinFlow ? setMode('pick') : setMode('pin')}
+              >
+                {isChangePinFlow ? tr('back') : tr('cancel')}
+              </button>
               <button
                 type="submit"
                 className="btn-primary"
@@ -952,7 +985,7 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
 /* ========================================================
    PLAYERS PAGE
    ======================================================== */
-function PlayersPage({ tr, players, attendees, onReload, flash }) {
+function PlayersPage({ tr, isAdmin, players, attendees, onReload, flash }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [rating, setRating] = useState(5);
@@ -986,19 +1019,25 @@ function PlayersPage({ tr, players, attendees, onReload, flash }) {
         <p className="empty-row">{tr('no_players')}</p>
       ) : (
         <table className="presences-table">
-          <thead><tr><th>{tr('th_name')}</th><th>{tr('th_level')}</th><th>{tr('th_sunday')}</th><th></th></tr></thead>
+          <thead><tr><th>{tr('th_name')}</th><th>{tr('th_level')}</th><th>{tr('th_sunday')}</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
             {players.map(p => (
               <tr key={p.id}>
                 <td>{p.name}</td>
                 <td>
-                  <div className="rating-inline">
-                    <input type="range" min="1" max="10" step="0.5" defaultValue={Number(p.rating)} onChange={e => updateRating(p, e.target.value)} />
+                  {isAdmin ? (
+                    <div className="rating-inline">
+                      <input type="range" min="1" max="10" step="0.5" defaultValue={Number(p.rating)} onChange={e => updateRating(p, e.target.value)} />
+                      <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
+                    </div>
+                  ) : (
                     <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
-                  </div>
+                  )}
                 </td>
                 <td>{presentIds.has(p.id) ? <span className="badge badge-green">{tr('status_confirmed')}</span> : <span className="badge badge-muted">—</span>}</td>
-                <td><button className="row-x" onClick={() => remove(p)}>🗑</button></td>
+                {isAdmin && (
+                  <td><button className="row-x" onClick={() => remove(p)}>🗑</button></td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1475,7 +1514,7 @@ function ManualFineModal({ tr, players, onClose, onSubmit }) {
         <form className="new-form" onSubmit={e => { e.preventDefault(); if (pid && reason && amount) onSubmit(Number(pid), reason, parseFloat(amount)); }}>
           <label>{tr('th_player')}</label>
           <select value={pid} onChange={e => setPid(e.target.value)}>
-            <option value="">{tr('pick_one')}</option>
+            <option value="">— {tr('pick_one')} —</option>
             {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <label>{tr('th_reason')}</label>
@@ -1520,7 +1559,7 @@ function AnnouncementsFeed({ tr, lang, announcements }) {
 /* ========================================================
    MAN OF THE MATCH — vote section sur l'accueil
    ======================================================== */
-function MotMSection({ tr, lang, match, attendees, players, results, lastWinner, onVote }) {
+function MotMSection({ tr, match, attendees, results, lastWinner, onVote }) {
   const [voterId, setVoterId] = useState('');
   const [votedId, setVotedId] = useState('');
   const [busy, setBusy] = useState(false);

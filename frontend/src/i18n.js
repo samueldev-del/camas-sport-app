@@ -10,8 +10,8 @@ const FR = {
   tab_stats:        'Statistiques',
   tab_caisse:       'Caisse',
   install_btn:      '📲 Installer',
-  admin_login:      '🔒 Mode admin',
-  admin_logout:     '🔓 Sortir admin',
+  admin_login:      'Mode admin',
+  admin_logout:     'Sortir admin',
   lang_label:       'Langue',
 
   // Home / dashboard
@@ -182,8 +182,8 @@ const DE = {
   tab_stats:        'Statistik',
   tab_caisse:       'Kasse',
   install_btn:      '📲 Installieren',
-  admin_login:      '🔒 Admin-Modus',
-  admin_logout:     '🔓 Admin verlassen',
+  admin_login:      'Admin-Modus',
+  admin_logout:     'Admin verlassen',
   lang_label:       'Sprache',
 
   // Home / dashboard

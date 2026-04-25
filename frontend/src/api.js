@@ -75,6 +75,21 @@ export const api = {
   addExpense:      (body) => req('/api/expenses', { method: 'POST', body }),
   caisse:          () => req('/api/caisse'),
 
+  // Announcements (lecture publique, écriture admin-only via header)
+  listAnnouncements: () => req('/api/announcements'),
+  addAnnouncement:   (body) => req('/api/announcements', { method: 'POST', body }),
+  updateAnnouncement:(id, body) => req(`/api/announcements/${id}`, { method: 'PATCH', body }),
+  deleteAnnouncement:(id) => req(`/api/announcements/${id}`, { method: 'DELETE' }),
+
+  // Man of the Match
+  motmVote:    (matchId, voterId, votedId) => req('/api/motm/vote', { method: 'POST', body: { matchId, voterId, votedId } }),
+  motmResults: (matchId) => req(`/api/motm/${matchId}`),
+  motmMyVote:  (matchId, voterId) => req(`/api/motm/me/${matchId}/${voterId}`),
+  motmLast:    () => req('/api/motm/last'),
+
+  // Consentement RGPD/DSGVO
+  recordConsent: (kind, granted = true) => req('/api/consent', { method: 'POST', body: { kind, granted } }),
+
   // Vérifie le code admin auprès du backend
   adminCheck:      (code) => fetch(`${BASE}/api/admin/check`, {
     method: 'POST',

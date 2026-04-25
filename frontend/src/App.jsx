@@ -9,7 +9,7 @@ const TABS_BASE = [
   { id: 'players',  icon: '👥', key: 'tab_players', adminOnly: false },
   { id: 'teams',    icon: '👕', key: 'tab_teams',   adminOnly: false },
   { id: 'stats',    icon: '📈', key: 'tab_stats',   adminOnly: false },
-  { id: 'caisse',   icon: '🧾', key: 'tab_caisse',  adminOnly: true  },
+  { id: 'admin',    icon: '🛠️', key: 'tab_admin',   adminOnly: true  },
 ];
 
 const POSITIONS = [
@@ -49,6 +49,13 @@ export default function App() {
   const [matchGoals, setMatchGoals] = useState([]);
   const [fines, setFines] = useState([]);
   const [caisse, setCaisse] = useState({ paid_fines: 0, due_fines: 0, expenses: 0, balance: 0 });
+  const [announcements, setAnnouncements] = useState([]);
+  const [motmResults, setMotmResults] = useState([]);
+  const [motmLast, setMotmLast] = useState(null);
+  const [legal, setLegal] = useState(null);            // 'impressum' | 'privacy' | null
+  const [cookieAck, setCookieAck] = useState(() => {
+    try { return localStorage.getItem('camas_cookie_ack') === '1'; } catch { return true; }
+  });
   const [toast, setToast] = useState(null);
   const [installEvt, setInstallEvt] = useState(null);
 
@@ -83,16 +90,42 @@ export default function App() {
   const onAdminLogout = () => {
     clearAdminCode();
     setIsAdmin(false);
-    if (tab === 'caisse') setTab('home');
+    if (tab === 'admin') setTab('home');
     flash(tr('admin_logout'), 'ok');
+  };
+
+  const acceptCookies = () => {
+    try { localStorage.setItem('camas_cookie_ack', '1'); } catch { /* ignore */ }
+    setCookieAck(true);
+    api.recordConsent('cookies', true).catch(() => { /* best effort */ });
   };
 
   const loadHome = useCallback(async () => {
     try {
-      const [m, ps, last] = await Promise.all([api.currentMatch(), api.listPlayers(), api.lastMatch()]);
+      const [m, ps, last, anns, ml] = await Promise.all([
+        api.currentMatch(), api.listPlayers(), api.lastMatch(),
+        api.listAnnouncements().catch(() => []),
+        api.motmLast().catch(() => null),
+      ]);
       setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
+      setAnnouncements(anns); setMotmLast(ml);
+      // Load MotM results for current match
+      if (m.match?.id) {
+        try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
+      }
     } catch (e) { console.warn(e); }
   }, []);
+
+  const loadAdmin = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const [f, c, a] = await Promise.all([
+        api.fines(), api.caisse(),
+        api.listAnnouncements().catch(() => []),
+      ]);
+      setFines(f); setCaisse(c); setAnnouncements(a);
+    } catch (e) { console.warn(e); }
+  }, [isAdmin]);
 
   const loadTeams = useCallback(async () => {
     if (!match) return;
@@ -107,11 +140,7 @@ export default function App() {
     setScorers(s); setAttStats(a);
   }, []);
 
-  const loadCaisse = useCallback(async () => {
-    if (!isAdmin) return;
-    const [f, c] = await Promise.all([api.fines(), api.caisse()]);
-    setFines(f); setCaisse(c);
-  }, [isAdmin]);
+  const loadCaisse = loadAdmin; // alias rétro-compat (utilisé par CaissePage)
 
   useLayoutEffect(() => {
     Promise.resolve().then(() => {
@@ -124,9 +153,9 @@ export default function App() {
     Promise.resolve().then(() => {
       if (tab === 'teams') loadTeams();
       else if (tab === 'stats') loadStats();
-      else if (tab === 'caisse' && isAdmin) loadCaisse();
+      else if (tab === 'admin' && isAdmin) loadAdmin();
     });
-  }, [tab, loadTeams, loadStats, loadCaisse, isAdmin]);
+  }, [tab, loadTeams, loadStats, loadAdmin, isAdmin]);
 
   useEffect(() => {
     const h = (e) => { e.preventDefault(); setInstallEvt(e); };
@@ -205,6 +234,7 @@ export default function App() {
             <HomePage
               tr={tr} lang={lang}
               match={match} attendees={attendees} players={players} scorers={scorers} lastMatch={lastMatch}
+              announcements={announcements} motmResults={motmResults} motmLast={motmLast}
               onConfirm={async (pid, intent, position) => {
                 try {
                   const r = await api.vote(pid, intent, position);
@@ -221,6 +251,10 @@ export default function App() {
               onCreatePlayer={async (name, rating) => {
                 try { const p = await api.createPlayer({ name, rating }); await loadHome(); flash(tr('player_added', { name: p.name })); return p; }
                 catch (e) { flash(e.message, 'err'); throw e; }
+              }}
+              onMotmVote={async (voterId, votedId) => {
+                try { await api.motmVote(match.id, voterId, votedId); flash(tr('motm_recorded'), 'ok'); const r = await api.motmResults(match.id); setMotmResults(r); }
+                catch (e) { flash(e.message, 'err'); }
               }}
             />
           )}
@@ -249,14 +283,28 @@ export default function App() {
 
           {tab === 'stats' && <StatsPage tr={tr} scorers={scorers} attendance={attStats} />}
 
-          {tab === 'caisse' && (
+          {tab === 'admin' && (
             isAdmin ? (
-              <CaissePage
+              <AdminDashboard
                 tr={tr}
-                fines={fines} caisse={caisse} players={players}
-                onPay={async (id) => { try { await api.payFine(id); loadCaisse(); flash(tr('fine_paid')); } catch (e) { flash(e.message, 'err'); } }}
-                onAddExpense={async (reason, amount) => { try { await api.addExpense({ reason, amount }); loadCaisse(); flash(tr('expense_added')); } catch (e) { flash(e.message, 'err'); } }}
-                onAddFine={async (playerId, reason, amount) => { try { await api.addFine({ playerId, reason, amount }); loadCaisse(); flash(tr('fine_added')); } catch (e) { flash(e.message, 'err'); } }}
+                announcements={announcements} fines={fines} caisse={caisse}
+                players={players} match={match} motmResults={motmResults}
+                onAddAnnouncement={async (body, title, pinned) => {
+                  try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash('✅', 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onDeleteAnnouncement={async (id) => {
+                  if (!confirm('Supprimer cette annonce ?')) return;
+                  try { await api.deleteAnnouncement(id); loadAdmin(); loadHome(); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onTogglePin={async (a) => {
+                  try { await api.updateAnnouncement(a.id, { pinned: !a.pinned }); loadAdmin(); loadHome(); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onPay={async (id) => { try { await api.payFine(id); loadAdmin(); flash(tr('fine_paid')); } catch (e) { flash(e.message, 'err'); } }}
+                onAddExpense={async (reason, amount) => { try { await api.addExpense({ reason, amount }); loadAdmin(); flash(tr('expense_added')); } catch (e) { flash(e.message, 'err'); } }}
+                onAddFine={async (playerId, reason, amount) => { try { await api.addFine({ playerId, reason, amount }); loadAdmin(); flash(tr('fine_added')); } catch (e) { flash(e.message, 'err'); } }}
               />
             ) : (
               <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
@@ -297,10 +345,27 @@ export default function App() {
             </div>
           </div>
         </footer>
+
+        {/* Bandeau légal — obligatoire en Allemagne */}
+        <div className="legal-bar">
+          <button className="legal-link" onClick={() => setLegal('impressum')}>{tr('legal_impressum')}</button>
+          <span aria-hidden="true">·</span>
+          <button className="legal-link" onClick={() => setLegal('privacy')}>{tr('legal_privacy')}</button>
+          <span aria-hidden="true">·</span>
+          <span className="legal-copy">© {new Date().getFullYear()} CAMAS e.V.</span>
+        </div>
       </div>
 
       {adminModalOpen && (
         <AdminModal tr={tr} onClose={() => setAdminModalOpen(false)} onSubmit={onAdminLogin} />
+      )}
+
+      {legal && (
+        <LegalModal tr={tr} kind={legal} onClose={() => setLegal(null)} />
+      )}
+
+      {!cookieAck && (
+        <CookieBanner tr={tr} onAccept={acceptCookies} onMore={() => setLegal('privacy')} />
       )}
 
       {toast && <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
@@ -379,7 +444,7 @@ function LockedSection({ tr, onUnlock }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, onConfirm, onUnvote, onCreatePlayer }) {
+function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, announcements, motmResults, motmLast, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -399,6 +464,17 @@ function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, onC
   return (
     <>
       {lastMatch && <LastMatchCard tr={tr} lang={lang} lastMatch={lastMatch} />}
+
+      {/* Annonces du responsable (lecture publique) */}
+      <AnnouncementsFeed tr={tr} lang={lang} announcements={announcements} />
+
+      {/* Vote « Joueur du jour » */}
+      <MotMSection
+        tr={tr} lang={lang}
+        match={match} attendees={attendees} players={players}
+        results={motmResults} lastWinner={motmLast}
+        onVote={onMotmVote}
+      />
 
       <div className="grid-top">
         <section className="panel presences-panel">
@@ -1126,6 +1202,313 @@ function ManualFineModal({ tr, players, onClose, onSubmit }) {
             <button type="submit" className="btn-primary">{tr('save')}</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================
+   ANNOUNCEMENTS FEED (lecture publique sur l'accueil)
+   ======================================================== */
+function AnnouncementsFeed({ tr, lang, announcements }) {
+  if (!announcements || announcements.length === 0) return null;
+  const fmt = (iso) => new Date(iso).toLocaleDateString(localeFor(lang), { timeZone: 'Europe/Berlin', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <section className="panel ann-feed">
+      <div className="panel-head">
+        <h2>📣 {tr('announcements')}</h2>
+      </div>
+      <ul className="ann-list">
+        {announcements.slice(0, 5).map(a => (
+          <li key={a.id} className={`ann-item ${a.pinned ? 'is-pinned' : ''}`}>
+            {a.pinned && <span className="ann-pin">{tr('pinned_badge')}</span>}
+            {a.title && <h3 className="ann-title">{a.title}</h3>}
+            <p className="ann-body">{a.body}</p>
+            <time className="ann-date">{fmt(a.created_at)}</time>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ========================================================
+   MAN OF THE MATCH — vote section sur l'accueil
+   ======================================================== */
+function MotMSection({ tr, lang, match, attendees, players, results, lastWinner, onVote }) {
+  const [voterId, setVoterId] = useState('');
+  const [votedId, setVotedId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const eligibleVoters = useMemo(
+    () => attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent'),
+    [attendees]
+  );
+  const eligibleCandidates = eligibleVoters; // mêmes joueurs (sauf soi-même côté backend)
+
+  if (!match) {
+    return (
+      <section className="panel motm-panel">
+        <div className="panel-head"><h2>🏆 {tr('motm_title')}</h2></div>
+        <p className="empty-row">{tr('motm_locked_no_match')}</p>
+      </section>
+    );
+  }
+
+  const totalVotes = results.reduce((acc, r) => acc + r.votes, 0);
+  const winner = results[0];
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!voterId || !votedId) return;
+    if (Number(voterId) === Number(votedId)) return;
+    setBusy(true);
+    try { await onVote(Number(voterId), Number(votedId)); setVotedId(''); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <section className="panel motm-panel">
+      <div className="panel-head">
+        <h2>🏆 {tr('motm_title')}</h2>
+      </div>
+      <p className="motm-intro">{tr('motm_intro')}</p>
+
+      {eligibleVoters.length < 2 ? (
+        <p className="empty-row">{tr('motm_locked_no_atts')}</p>
+      ) : (
+        <form className="motm-form" onSubmit={submit}>
+          <label className="motm-lbl">{tr('motm_who_are_you')}</label>
+          <select value={voterId} onChange={e => setVoterId(e.target.value)}>
+            <option value="">— {tr('pick_one')} —</option>
+            {eligibleVoters.map(a => <option key={a.player_id} value={a.player_id}>{a.name}</option>)}
+          </select>
+
+          <label className="motm-lbl">{tr('motm_pick_player')}</label>
+          <select value={votedId} onChange={e => setVotedId(e.target.value)} disabled={!voterId}>
+            <option value="">— {tr('pick_one')} —</option>
+            {eligibleCandidates
+              .filter(a => String(a.player_id) !== String(voterId))
+              .map(a => <option key={a.player_id} value={a.player_id}>{a.name}</option>)}
+          </select>
+
+          <button className="btn-primary" type="submit" disabled={!voterId || !votedId || busy}>
+            🏆 {tr('motm_your_vote')}
+          </button>
+        </form>
+      )}
+
+      {results.length > 0 && (
+        <div className="motm-results">
+          <h3 className="motm-results-h">{tr('motm_results')} <span className="motm-total">({totalVotes})</span></h3>
+          <ol className="motm-rank">
+            {results.map((r, i) => {
+              const pct = totalVotes ? Math.round((r.votes / totalVotes) * 100) : 0;
+              return (
+                <li key={r.id} className={`motm-row rank-${i + 1}`}>
+                  <span className="motm-medal">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
+                  <span className="motm-name">{r.name}</span>
+                  <div className="motm-bar"><div className="motm-bar-fill" style={{ width: `${pct}%` }} /></div>
+                  <span className="motm-count">{r.votes} {r.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {winner && winner.votes > 0 && (
+            <div className="motm-leader-banner">
+              🏆 <strong>{winner.name}</strong> — {tr('motm_winner')}
+            </div>
+          )}
+        </div>
+      )}
+
+      {lastWinner && lastWinner.results && lastWinner.results.length > 0 && (
+        <div className="motm-last">
+          <h4 className="motm-last-h">{tr('motm_last_winner')}</h4>
+          <p className="motm-last-name">🥇 {lastWinner.results[0].name} <span className="muted-txt">— {lastWinner.results[0].votes} {tr('motm_votes')}</span></p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ========================================================
+   ADMIN DASHBOARD — sous-sections Annonces / MotM / Caisse
+   ======================================================== */
+function AdminDashboard({ tr, announcements, fines, caisse, players, match, motmResults,
+                         onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
+                         onPay, onAddExpense, onAddFine }) {
+  const [section, setSection] = useState('ann');
+
+  return (
+    <>
+      <section className="panel admin-hero">
+        <div className="panel-head"><h2>🛠️ {tr('admin_dashboard')}</h2></div>
+        <p className="admin-welcome">{tr('admin_welcome')}</p>
+        <div className="admin-tabs">
+          <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_section_ann')}</button>
+          <button className={`admin-tab ${section === 'motm' ? 'active' : ''}`} onClick={() => setSection('motm')}>{tr('admin_section_motm')}</button>
+          <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>{tr('admin_section_cash')}</button>
+        </div>
+      </section>
+
+      {section === 'ann' && (
+        <AdminAnnouncements
+          tr={tr} announcements={announcements}
+          onAdd={onAddAnnouncement} onDelete={onDeleteAnnouncement} onTogglePin={onTogglePin}
+        />
+      )}
+
+      {section === 'motm' && (
+        <section className="panel">
+          <div className="panel-head"><h2>🏆 {tr('motm_results')}</h2></div>
+          {!match ? (
+            <p className="empty-row">{tr('motm_locked_no_match')}</p>
+          ) : motmResults.length === 0 ? (
+            <p className="empty-row">{tr('motm_no_votes')}</p>
+          ) : (
+            <ol className="motm-rank">
+              {motmResults.map((r, i) => (
+                <li key={r.id} className={`motm-row rank-${i + 1}`}>
+                  <span className="motm-medal">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
+                  <span className="motm-name">{r.name}</span>
+                  <span className="motm-count">{r.votes} {r.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
+
+      {section === 'cash' && (
+        <CaissePage
+          tr={tr}
+          fines={fines} caisse={caisse} players={players}
+          onPay={onPay}
+          onAddExpense={onAddExpense}
+          onAddFine={onAddFine}
+        />
+      )}
+    </>
+  );
+}
+
+function AdminAnnouncements({ tr, announcements, onAdd, onDelete, onTogglePin }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [pinned, setPinned] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!body.trim()) return;
+    await onAdd(body.trim(), title.trim() || null, pinned);
+    setTitle(''); setBody(''); setPinned(false);
+  };
+
+  return (
+    <>
+      <section className="panel">
+        <div className="panel-head"><h2>{tr('publish_announcement')}</h2></div>
+        <form className="ann-form" onSubmit={submit}>
+          <input className="ann-input" placeholder={tr('ann_title_ph')} value={title} onChange={e => setTitle(e.target.value)} />
+          <textarea className="ann-textarea" placeholder={tr('ann_body_ph')} value={body} onChange={e => setBody(e.target.value)} rows={4} required />
+          <label className="ann-pin-toggle">
+            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} />
+            <span>{tr('pin_label')} 📌</span>
+          </label>
+          <button className="btn-primary" type="submit" disabled={!body.trim()}>{tr('publish_btn')}</button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><h2>{tr('manage_announcements')}</h2></div>
+        {announcements.length === 0 ? (
+          <p className="empty-row">{tr('ann_empty_admin')}</p>
+        ) : (
+          <ul className="ann-admin-list">
+            {announcements.map(a => (
+              <li key={a.id} className={`ann-admin-item ${a.pinned ? 'is-pinned' : ''}`}>
+                <div className="ann-admin-body">
+                  {a.title && <strong>{a.title}</strong>}
+                  <p>{a.body}</p>
+                  <time>{new Date(a.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Berlin' })}</time>
+                </div>
+                <div className="ann-admin-actions">
+                  <button className="btn-sm" onClick={() => onTogglePin(a)} title={a.pinned ? 'Désépingler' : 'Épingler'}>
+                    {a.pinned ? '📌' : '📍'}
+                  </button>
+                  <button className="row-x" onClick={() => onDelete(a.id)}>🗑</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* ========================================================
+   LEGAL MODAL — Impressum / Datenschutz (DSGVO)
+   ======================================================== */
+function LegalModal({ tr, kind, onClose }) {
+  const isPrivacy = kind === 'privacy';
+  return (
+    <div className="sheet-overlay legal-overlay" onClick={onClose}>
+      <div className="sheet legal-sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-head">
+          <h3>{isPrivacy ? tr('privacy_title') : tr('impressum_title')}</h3>
+          <button className="ghost-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="legal-body">
+          {!isPrivacy && (
+            <>
+              <p className="legal-intro">{tr('impressum_intro')}</p>
+              <h4>{tr('impressum_assoc')}</h4>
+              <p><strong>{tr('impressum_addr_lbl')} :</strong> {tr('impressum_addr')}</p>
+              <p><strong>{tr('impressum_resp_lbl')} :</strong> {tr('impressum_resp')}</p>
+              <p><strong>Email :</strong> <a href="mailto:finances@camasev.com" className="footer-link">{tr('impressum_email')}</a></p>
+              <p>{tr('impressum_register')}</p>
+              <p className="legal-disclaimer">{tr('impressum_disclaimer')}</p>
+            </>
+          )}
+          {isPrivacy && (
+            <>
+              <p className="legal-intro">{tr('privacy_intro')}</p>
+              <h4>{tr('privacy_h_who')}</h4><p>{tr('privacy_who')}</p>
+              <h4>{tr('privacy_h_what')}</h4><p>{tr('privacy_what')}</p>
+              <h4>{tr('privacy_h_purpose')}</h4><p>{tr('privacy_purpose')}</p>
+              <h4>{tr('privacy_h_basis')}</h4><p>{tr('privacy_basis')}</p>
+              <h4>{tr('privacy_h_storage')}</h4><p>{tr('privacy_storage')}</p>
+              <h4>{tr('privacy_h_rights')}</h4><p>{tr('privacy_rights')}</p>
+              <h4>{tr('privacy_h_cookies')}</h4><p>{tr('privacy_cookies')}</p>
+              <h4>{tr('privacy_h_thirdparty')}</h4><p>{tr('privacy_thirdparty')}</p>
+              <h4>{tr('privacy_h_update')}</h4><p>{tr('privacy_update')}</p>
+            </>
+          )}
+        </div>
+        <div className="row-actions" style={{ padding: '12px 18px 4px' }}>
+          <button className="btn-primary" onClick={onClose}>{tr('legal_close')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================
+   COOKIE BANNER (RGPD/DSGVO)
+   ======================================================== */
+function CookieBanner({ tr, onAccept, onMore }) {
+  return (
+    <div className="cookie-banner" role="dialog" aria-live="polite">
+      <div className="cookie-content">
+        <strong>{tr('cookie_title')}</strong>
+        <p>{tr('cookie_text')}</p>
+      </div>
+      <div className="cookie-actions">
+        <button className="btn-ghost" onClick={onMore}>{tr('cookie_more')}</button>
+        <button className="btn-primary" onClick={onAccept}>{tr('cookie_accept')}</button>
       </div>
     </div>
   );

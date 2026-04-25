@@ -376,6 +376,148 @@ app.get('/api/caisse', requireAdmin, async (_req, res) => {
   res.json({ paid_fines, due_fines, expenses, balance: paid_fines - expenses });
 });
 
+// ========================================================
+// ANNOUNCEMENTS — annonces publiées par l'admin
+// ========================================================
+app.get('/api/announcements', async (_req, res) => {
+  try {
+    const rows = await sql`
+      SELECT id, title, body, pinned, created_at
+      FROM announcements
+      ORDER BY pinned DESC, created_at DESC
+      LIMIT 20
+    `;
+    res.json(rows);
+  } catch (e) {
+    // Table pas encore migrée : on renvoie [] au lieu de planter
+    res.json([]);
+  }
+});
+
+app.post('/api/announcements', requireAdmin, async (req, res) => {
+  const { title, body, pinned = false } = req.body;
+  if (!body || !body.trim()) return res.status(400).json({ error: 'Texte requis' });
+  const rows = await sql`
+    INSERT INTO announcements (title, body, pinned)
+    VALUES (${title?.trim() || null}, ${body.trim()}, ${!!pinned})
+    RETURNING id, title, body, pinned, created_at
+  `;
+  res.json(rows[0]);
+});
+
+app.patch('/api/announcements/:id', requireAdmin, async (req, res) => {
+  const { title, body, pinned } = req.body;
+  const fields = [];
+  if (title !== undefined) fields.push(sql`title = ${title?.trim() || null}`);
+  if (body !== undefined)  fields.push(sql`body = ${body?.trim() || ''}`);
+  if (pinned !== undefined) fields.push(sql`pinned = ${!!pinned}`);
+  if (fields.length === 0) return res.status(400).json({ error: 'Aucun champ à modifier' });
+  // neon-serverless ne supporte pas un set dynamique → on fait simple :
+  if (title !== undefined) await sql`UPDATE announcements SET title = ${title?.trim() || null} WHERE id = ${req.params.id}`;
+  if (body !== undefined)  await sql`UPDATE announcements SET body  = ${body?.trim()    || ''}   WHERE id = ${req.params.id}`;
+  if (pinned !== undefined) await sql`UPDATE announcements SET pinned = ${!!pinned}             WHERE id = ${req.params.id}`;
+  const [row] = await sql`SELECT id, title, body, pinned, created_at FROM announcements WHERE id = ${req.params.id}`;
+  res.json(row);
+});
+
+app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
+  await sql`DELETE FROM announcements WHERE id = ${req.params.id}`;
+  res.json({ ok: true });
+});
+
+// ========================================================
+// MAN OF THE MATCH — vote du joueur du jour
+// ========================================================
+// POST { matchId, voterId, votedId } — un upsert par votant/match
+app.post('/api/motm/vote', async (req, res) => {
+  const { matchId, voterId, votedId } = req.body;
+  if (!matchId || !voterId || !votedId) {
+    return res.status(400).json({ error: 'matchId, voterId et votedId requis' });
+  }
+  if (Number(voterId) === Number(votedId)) {
+    return res.status(400).json({ error: 'Tu ne peux pas voter pour toi-même' });
+  }
+  try {
+    await sql`
+      INSERT INTO motm_votes (match_id, voter_id, voted_id)
+      VALUES (${matchId}, ${voterId}, ${votedId})
+      ON CONFLICT (match_id, voter_id)
+      DO UPDATE SET voted_id = EXCLUDED.voted_id, created_at = NOW()
+    `;
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/motm/:matchId — classement du vote pour ce match
+app.get('/api/motm/:matchId', async (req, res) => {
+  try {
+    const rows = await sql`
+      SELECT p.id, p.name, COUNT(v.id)::int AS votes
+      FROM motm_votes v
+      JOIN players p ON p.id = v.voted_id
+      WHERE v.match_id = ${req.params.matchId}
+      GROUP BY p.id, p.name
+      ORDER BY votes DESC, p.name ASC
+      LIMIT 10
+    `;
+    res.json(rows);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+// GET /api/motm/me/:matchId/:voterId — récupère le vote du votant (pour pré-cocher l'UI)
+app.get('/api/motm/me/:matchId/:voterId', async (req, res) => {
+  try {
+    const [row] = await sql`
+      SELECT voted_id FROM motm_votes
+      WHERE match_id = ${req.params.matchId} AND voter_id = ${req.params.voterId}
+    `;
+    res.json(row || null);
+  } catch {
+    res.json(null);
+  }
+});
+
+// GET /api/motm/last — vainqueur du dernier match terminé
+app.get('/api/motm/last', async (_req, res) => {
+  try {
+    const last = await sql`SELECT id, match_date FROM matches WHERE status = 'done' ORDER BY match_date DESC LIMIT 1`;
+    if (!last.length) return res.json(null);
+    const rows = await sql`
+      SELECT p.id, p.name, COUNT(v.id)::int AS votes
+      FROM motm_votes v
+      JOIN players p ON p.id = v.voted_id
+      WHERE v.match_id = ${last[0].id}
+      GROUP BY p.id, p.name
+      ORDER BY votes DESC LIMIT 5
+    `;
+    res.json({ matchId: last[0].id, matchDate: last[0].match_date, results: rows });
+  } catch {
+    res.json(null);
+  }
+});
+
+// ========================================================
+// CONSENT — journalisation RGPD/DSGVO (optionnel mais légalement utile)
+// ========================================================
+const crypto = require('crypto');
+app.post('/api/consent', async (req, res) => {
+  const { kind = 'cookies', granted = true, playerId = null } = req.body || {};
+  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
+  const ipHash = ip ? crypto.createHash('sha256').update(ip + (process.env.IP_SALT || 'camas')).digest('hex').slice(0, 24) : null;
+  const ua = (req.headers['user-agent'] || '').toString().slice(0, 200);
+  try {
+    await sql`
+      INSERT INTO consents (player_id, ip_hash, user_agent, consent_kind, granted)
+      VALUES (${playerId}, ${ipHash}, ${ua}, ${kind}, ${!!granted})
+    `;
+  } catch { /* table éventuellement absente */ }
+  res.json({ ok: true });
+});
+
 // Démarre le serveur uniquement en local (pas en environnement serverless Vercel)
 if (require.main === module) {
   app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));

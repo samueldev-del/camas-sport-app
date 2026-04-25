@@ -59,6 +59,36 @@ CREATE TABLE IF NOT EXISTS expenses (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS announcements (
+  id          SERIAL PRIMARY KEY,
+  title       TEXT,
+  body        TEXT NOT NULL,
+  pinned      BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS motm_votes (
+  id          SERIAL PRIMARY KEY,
+  match_id    INT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  voter_id    INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  voted_id    INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (match_id, voter_id)
+);
+
+CREATE TABLE IF NOT EXISTS consents (
+  id           SERIAL PRIMARY KEY,
+  player_id    INT REFERENCES players(id) ON DELETE SET NULL,
+  ip_hash      TEXT,
+  user_agent   TEXT,
+  consent_kind TEXT NOT NULL,
+  granted      BOOLEAN NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_attendances_match ON attendances(match_id);
 CREATE INDEX IF NOT EXISTS idx_goals_match ON goals(match_id);
 CREATE INDEX IF NOT EXISTS idx_fines_player ON fines(player_id);
+CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(pinned DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_motm_match ON motm_votes(match_id);

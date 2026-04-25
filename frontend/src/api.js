@@ -46,13 +46,14 @@ export const api = {
   createPlayer:    (body) => req('/api/players', { method: 'POST', body }),
   updatePlayer:    (id, body) => req(`/api/players/${id}`, { method: 'PATCH', body }),
   deletePlayer:    (id) => req(`/api/players/${id}`, { method: 'DELETE' }),
+  playerProfile:   (id) => req(`/api/players/${id}/profile`),
 
   currentMatch:    () => req('/api/match/current'),
   lastMatch:       () => req('/api/match/last'),
 
-  // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'.
-  vote:            (playerId, intent, position) =>
-    req('/api/vote', { method: 'POST', body: { playerId, intent, position } }),
+  // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'. Ajout du PIN.
+  vote:            (playerId, intent, position = null, pin = null) =>
+    req('/api/vote', { method: 'POST', body: { playerId, intent, position, pin } }),
   unvote:          (playerId, matchId) =>
     req('/api/vote', { method: 'DELETE', body: { playerId, matchId } }),
   updatePosition:  (playerId, matchId, position) =>
@@ -72,6 +73,7 @@ export const api = {
   addFine:         (body) => req('/api/fines', { method: 'POST', body }),
   payFine:         (id) => req(`/api/fines/${id}/pay`, { method: 'POST' }),
 
+  listExpenses:    () => req('/api/expenses'),
   addExpense:      (body) => req('/api/expenses', { method: 'POST', body }),
   caisse:          () => req('/api/caisse'),
 

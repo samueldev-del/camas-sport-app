@@ -518,6 +518,77 @@ app.post('/api/consent', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ========================================================
+// PLAYER PROFILE — agrégats pour la carte joueur (FUT-style)
+// Renvoie : buts, passes, présences, retards, MotM gagnés,
+//          dette (amendes non payées), ratio de présence
+// ========================================================
+app.get('/api/players/:id/profile', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+  try {
+    const [player] = await sql`SELECT id, name, rating FROM players WHERE id = ${id}`;
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+
+    // Buts / passes
+    const [g] = await sql`
+      SELECT COALESCE(SUM(goals),0)::int AS goals,
+             COALESCE(SUM(assists),0)::int AS assists,
+             COUNT(*)::int AS scoring_apps
+      FROM goals WHERE player_id = ${id}
+    `;
+    // Présences
+    const [att] = await sql`
+      SELECT COUNT(*)::int AS total,
+             SUM(CASE WHEN is_late THEN 1 ELSE 0 END)::int AS lates,
+             SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END)::int AS absences,
+             SUM(CASE WHEN status IN ('present','registered','late') THEN 1 ELSE 0 END)::int AS shows
+      FROM attendances WHERE player_id = ${id}
+    `;
+    // Total matches joués par le club (toutes données confondues)
+    const [{ total_matches }] = await sql`SELECT COUNT(*)::int AS total_matches FROM matches WHERE status = 'done'`;
+
+    // MotM gagnés (1er au classement de chaque match terminé)
+    let motmWins = 0;
+    try {
+      const wins = await sql`
+        WITH ranked AS (
+          SELECT match_id, voted_id, COUNT(*)::int AS votes,
+                 RANK() OVER (PARTITION BY match_id ORDER BY COUNT(*) DESC) AS r
+          FROM motm_votes GROUP BY match_id, voted_id
+        )
+        SELECT COUNT(*)::int AS wins FROM ranked WHERE r = 1 AND voted_id = ${id}
+      `;
+      motmWins = wins[0]?.wins || 0;
+    } catch { /* table peut être absente */ }
+
+    // Dette = amendes non payées
+    let dueAmount = 0;
+    try {
+      const [d] = await sql`SELECT COALESCE(SUM(amount),0)::float AS due FROM fines WHERE player_id = ${id} AND paid = false`;
+      dueAmount = Number(d?.due || 0);
+    } catch { /* ignore */ }
+
+    const presenceRatio = total_matches > 0 ? Math.round((att.shows / total_matches) * 100) : 0;
+    const punctuality = att.shows > 0 ? Math.round(((att.shows - att.lates) / att.shows) * 100) : 0;
+
+    res.json({
+      id: player.id, name: player.name, rating: Number(player.rating),
+      goals: g.goals, assists: g.assists,
+      shows: att.shows || 0, lates: att.lates || 0, absences: att.absences || 0,
+      total_matches: total_matches || 0,
+      presence_ratio: presenceRatio,
+      punctuality,
+      motm_wins: motmWins,
+      due_amount: dueAmount,
+    });
+  } catch (e) {
+    console.error('profile error', e);
+    res.status(500).json({ error: 'Internal' });
+  }
+});
+
 // Démarre le serveur uniquement en local (pas en environnement serverless Vercel)
 if (require.main === module) {
   app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));

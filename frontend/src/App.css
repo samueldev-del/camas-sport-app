@@ -1,3 +1,100 @@
+
+/* ====== FIFA Player Card Premium Style ====== */
+.fut-card-container {
+  position: relative;
+  width: 320px;
+}
+
+.fut-card {
+  background: linear-gradient(135deg, #f9a825 0%, #ffeb3b 50%, #f9a825 100%);
+  padding: 30px 20px;
+  border-radius: 20px;
+  text-align: center;
+  border: 4px solid #fff;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+  position: relative;
+  clip-path: polygon(10% 0, 90% 0, 100% 10%, 100% 85%, 50% 100%, 0 85%, 0 10%);
+}
+
+.fut-card-top {
+  position: absolute;
+  left: 20px; top: 30px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+
+.fut-rating { font-size: 2rem; font-weight: 900; color: #333; line-height: 1; }
+.fut-pos { font-weight: 800; color: #555; }
+.fut-flag { font-size: 1.5rem; }
+.fut-logo img { width: 30px; height: 30px; }
+
+.fut-avatar {
+  width: 120px; height: 120px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 50%;
+  margin: 0 auto 15px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 3rem; font-weight: 900; color: #1b5e20;
+}
+
+.fut-name { font-size: 1.5rem; font-weight: 900; color: #1b5e20; margin-bottom: 20px; }
+
+.fut-stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px; border-top: 2px solid rgba(0,0,0,0.1);
+  padding-top: 15px;
+}
+
+.fut-stat { font-weight: 700; color: #333; font-size: 0.78rem; letter-spacing: 0.04em; }
+.fut-stat span { display: block; font-size: 1.15rem; font-weight: 900; color: #1b5e20; }
+
+/* Ligne trophées MotM */
+.fut-trophy {
+  margin: 8px 0 14px;
+  font-size: 1.4rem;
+  letter-spacing: 4px;
+  text-align: center;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.18));
+}
+.fut-trophy-more {
+  font-size: 0.92rem; font-weight: 800;
+  color: #1b5e20; margin-left: 4px; letter-spacing: 0;
+}
+
+/* Dette amendes (uniquement si > 0) */
+.fut-debt {
+  margin-top: 14px;
+  padding: 8px 12px;
+  background: rgba(211,47,47,0.10);
+  border: 1px solid rgba(211,47,47,0.30);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.86rem;
+  color: #b71c1c;
+  font-weight: 600;
+}
+.fut-debt strong { font-weight: 900; font-size: 1.02rem; }
+
+.fut-loading {
+  position: absolute; bottom: 12px; right: 16px;
+  font-size: 0.74rem; color: rgba(0,0,0,0.45); letter-spacing: 2px;
+}
+
+.btn-close-card {
+  position: absolute; top: -15px; right: -15px;
+  background: #333; color: #fff; width: 40px; height: 40px;
+  border-radius: 50%; font-size: 1.2rem; z-index: 10;
+}
+
+.clickable-name {
+  cursor: pointer;
+  color: #1b5e20;
+  font-weight: 700;
+  text-decoration: underline dotted;
+  transition: color 0.15s;
+}
+.clickable-name:hover {
+  color: #f9a825;
+}
 /* ==============================================
    CAMAS Sport — Tableau de bord professionnel
    Inspired by the CamAS e.V. dashboard mockup
@@ -693,6 +790,44 @@ table { width: 100%; border-collapse: collapse; }
   font-size: 0.85rem;
 }
 .btn-ghost:hover { background: var(--green-soft); border-color: var(--green); color: var(--green-d); }
+
+.btn-paypal {
+  background: #0070BA; /* Bleu officiel PayPal */
+  color: white;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+  transition: all 0.15s;
+}
+
+.btn-paypal:hover {
+  background: #003087; /* Bleu foncé PayPal au survol */
+  color: white;
+}
+
+.btn-whatsapp {
+  background: #25D366; /* Vert officiel WhatsApp */
+  color: white;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: none;
+  box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3);
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-whatsapp:hover {
+  background: #1DA851;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(37, 211, 102, 0.4);
+}
 
 .btn-sm {
   background: var(--ink);

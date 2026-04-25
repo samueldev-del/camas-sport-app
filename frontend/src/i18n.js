@@ -215,6 +215,39 @@ const FR = {
   admin_section_cash:   '🧾 Caisse / Sanctions',
   admin_welcome:        'Espace responsable — gère les annonces, le joueur du jour et la caisse.',
 
+  // Player card (FUT style)
+  card_goals:           'BUT',
+  card_assists:         'PAS',
+  card_shows:           'PRS',
+  card_ratio:           'RAT',
+  card_punct:           'PCT',
+  card_motm:            'MOTM',
+  card_motm_trophies:   'Élu joueur du jour',
+  card_debt:            'Dette',
+  card_debt_title:      'Amendes non payées',
+
+  // WhatsApp share (admin teams)
+  wa_title:             '🔥 *MATCH CAMAS e.V.* 🔥',
+  wa_meet:              '📅 *Rendez-vous Dimanche à 09h45*',
+  wa_format:            '🏟️ *Format :*',
+  wa_team_a:            '🟢 *ÉQUIPE A*',
+  wa_team_b:            '🔴 *ÉQUIPE B*',
+  wa_subs:              '🔄 Remplaçants :',
+  wa_warn_late:         '⚠️ N\'oubliez pas l\'amende de 2€ pour tout retard après 10h00 ! ⚽',
+
+  // CSV export
+  csv_btn:              '📥 Export CSV',
+  csv_col_date:         'Date',
+  csv_col_type:         'Type',
+  csv_col_player:       'Joueur',
+  csv_col_reason:       'Motif',
+  csv_col_amount:       'Montant (€)',
+  csv_col_status:       'Statut',
+  csv_type_fine:        'Amende',
+  csv_type_expense:     'Dépense',
+  csv_status_paid:      'Payé',
+  csv_status_due:       'À payer',
+
   // Legal — DSGVO / RGPD (Mentions légales obligatoires en Allemagne)
   impressum_title:      'Mentions légales (Impressum)',
   impressum_intro:      'Conformément au § 5 TMG (loi allemande sur les médias) :',
@@ -466,6 +499,39 @@ const DE = {
   admin_section_motm:   '🏆 Spieler des Tages',
   admin_section_cash:   '🧾 Kasse / Strafen',
   admin_welcome:        'Verantwortlicher-Bereich — verwalte Mitteilungen, Spieler des Tages und Kasse.',
+
+  // Player card (FUT style)
+  card_goals:           'TOR',
+  card_assists:         'VOR',
+  card_shows:           'EIN',
+  card_ratio:           'QUO',
+  card_punct:           'PKT',
+  card_motm:            'SDT',
+  card_motm_trophies:   'Spieler des Tages',
+  card_debt:            'Schulden',
+  card_debt_title:      'Unbezahlte Strafen',
+
+  // WhatsApp share (admin teams)
+  wa_title:             '🔥 *MATCH CAMAS e.V.* 🔥',
+  wa_meet:              '📅 *Treffpunkt Sonntag um 09:45*',
+  wa_format:            '🏟️ *Format:*',
+  wa_team_a:            '🟢 *TEAM A*',
+  wa_team_b:            '🔴 *TEAM B*',
+  wa_subs:              '🔄 Ersatzspieler:',
+  wa_warn_late:         '⚠️ Vergiss nicht: 2€ Strafe bei Verspätung nach 10:00 Uhr! ⚽',
+
+  // CSV export
+  csv_btn:              '📥 CSV exportieren',
+  csv_col_date:         'Datum',
+  csv_col_type:         'Typ',
+  csv_col_player:       'Spieler',
+  csv_col_reason:       'Grund',
+  csv_col_amount:       'Betrag (€)',
+  csv_col_status:       'Status',
+  csv_type_fine:        'Strafe',
+  csv_type_expense:     'Ausgabe',
+  csv_status_paid:      'Bezahlt',
+  csv_status_due:       'Offen',
 
   // Legal DSGVO
   impressum_title:      'Impressum',

@@ -4,6 +4,85 @@ import { api, getAdminCode, setAdminCode, clearAdminCode } from './api';
 import { t, LANGS, localeFor } from './i18n';
 import './App.css';
 
+/* ========================================================
+   PLAYER CARD MODAL — Carte joueur premium (style FUT)
+   Charge le profil agrégé depuis /api/players/:id/profile
+   ======================================================== */
+function PlayerCardModal({ player, tr, onClose }) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    api.playerProfile(player.player_id || player.id)
+      .then(p => { if (!cancel) setProfile(p); })
+      .catch(() => { /* fallback to local fields */ })
+      .finally(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [player.player_id, player.id]);
+
+  // Source de vérité : profil backend > données locales
+  const data = profile || player;
+  const goals    = data.goals    || 0;
+  const assists  = data.assists  || 0;
+  const shows    = data.shows    || 0;
+  const lates    = data.lates    || 0;
+  const motm     = data.motm_wins || 0;
+  const due      = Number(data.due_amount || 0);
+  const ratio    = data.presence_ratio !== undefined
+    ? data.presence_ratio
+    : (data.total_matches > 0 ? Math.round((shows / data.total_matches) * 100) : 0);
+  const punct    = data.punctuality !== undefined
+    ? data.punctuality
+    : (shows ? Math.round(((shows - lates) / shows) * 100) : 0);
+
+  return (
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="fut-card-container animate-pop" onClick={e => e.stopPropagation()}>
+        <div className="fut-card">
+          <div className="fut-card-top">
+            <div className="fut-rating">{(player.rating || data.rating || 5).toFixed(1)}</div>
+            <div className="fut-pos">{player.position || 'MIL'}</div>
+            <div className="fut-flag">🇨🇲</div>
+            <div className="fut-logo"><img src={logoCamas} alt="CAMAS" /></div>
+          </div>
+
+          <div className="fut-avatar">
+            {player.name.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="fut-name">{player.name.split(' ')[0].toUpperCase()}</div>
+
+          {motm > 0 && (
+            <div className="fut-trophy" title={tr('card_motm_trophies')}>
+              {Array.from({ length: Math.min(motm, 5) }).map((_, i) => <span key={i}>🏆</span>)}
+              {motm > 5 && <span className="fut-trophy-more">×{motm}</span>}
+            </div>
+          )}
+
+          <div className="fut-stats-grid">
+            <div className="fut-stat"><span>{goals}</span> {tr('card_goals')}</div>
+            <div className="fut-stat"><span>{assists}</span> {tr('card_assists')}</div>
+            <div className="fut-stat"><span>{shows}</span> {tr('card_shows')}</div>
+            <div className="fut-stat"><span>{ratio}%</span> {tr('card_ratio')}</div>
+            <div className="fut-stat"><span>{punct}%</span> {tr('card_punct')}</div>
+            <div className="fut-stat"><span>{motm}</span> {tr('card_motm')}</div>
+          </div>
+
+          {due > 0 && (
+            <div className="fut-debt" title={tr('card_debt_title')}>
+              💰 {tr('card_debt')} : <strong>{due.toFixed(2)} €</strong>
+            </div>
+          )}
+
+          {loading && <div className="fut-loading">…</div>}
+        </div>
+        <button className="btn-close-card" onClick={onClose} aria-label={tr('legal_close')}>✕</button>
+      </div>
+    </div>
+  );
+}
+
 const TABS_BASE = [
   { id: 'home',     icon: '🏠', key: 'tab_home',    adminOnly: false },
   { id: 'players',  icon: '👥', key: 'tab_players', adminOnly: false },
@@ -58,6 +137,16 @@ export default function App() {
   });
   const [toast, setToast] = useState(null);
   const [installEvt, setInstallEvt] = useState(null);
+
+  // Carte joueur sélectionné
+  const [selectedPlayerCard, setSelectedPlayerCard] = useState(null);
+
+  // Ouvre la carte joueur
+  const openPlayerCard = (player) => {
+    const stats = scorers.find(s => s.id === player.player_id || s.id === player.id) || {};
+    const att = attStats.find(a => a.id === player.player_id || a.id === player.id) || {};
+    setSelectedPlayerCard({ ...player, ...stats, ...att });
+  };
 
   const tr = useCallback((key, vars) => t(lang, key, vars), [lang]);
 
@@ -226,9 +315,10 @@ export default function App() {
               tr={tr} lang={lang}
               match={match} attendees={attendees} players={players} scorers={scorers} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
-              onConfirm={async (pid, intent, position) => {
+              onConfirm={async (pid, intent, position, pin) => {
                 try {
-                  const r = await api.vote(pid, intent, position);
+                  // On passe le PIN à l'API
+                  const r = await api.vote(pid, intent, position, pin);
                   if (intent === 'yes') flash(r.late ? tr('presence_late') : tr('presence_ok'), r.late ? 'warn' : 'ok');
                   else if (intent === 'maybe') flash(tr('maybe_ok'), 'warn');
                   else flash(tr('absent_ok'), 'err');
@@ -361,6 +451,10 @@ export default function App() {
       )}
 
       {toast && <div key={toast.id} className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
+
+      {selectedPlayerCard && (
+        <PlayerCardModal player={selectedPlayerCard} tr={tr} onClose={() => setSelectedPlayerCard(null)} />
+      )}
     </div>
   );
 }
@@ -494,7 +588,7 @@ function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, ann
               )}
               {attendees.map(a => (
                 <tr key={a.id}>
-                  <td>{a.name}</td>
+                  <td onClick={() => openPlayerCard(a)} className="clickable-name">{a.name}</td>
                   <td>
                     {a.status === 'maybe'
                       ? <span className="pos-tag pos-maybe">?</span>
@@ -648,51 +742,48 @@ function LastMatchCard({ tr, lang, lastMatch }) {
 /* ========================================================
    PLAYER PICKER (intent-aware)
    ======================================================== */
+
+/* ========================================================
+   PLAYER PICKER (SÉCURISÉ AVEC CODE PIN)
+   ======================================================== */
 function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCreate }) {
   const [search, setSearch] = useState('');
   const needsPosition = intent === 'yes';
-  const [mode, setMode] = useState('pick'); // pick | new | position
+  const [mode, setMode] = useState('pick'); // pick | new | position | pin
   const [selected, setSelected] = useState(null);
   const [newName, setNewName] = useState('');
   const [position, setPosition] = useState(null);
+  const [pin, setPin] = useState(''); // Le code secret
+  
   const voted = new Set(attendees.map(a => a.player_id));
   const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
 
-  const choosePlayer = async (p) => {
+  const choosePlayer = (p) => {
     setSelected(p);
-    if (needsPosition) {
-      setMode('position');
-    } else {
-      // Pas besoin de position pour 'maybe' / 'no' — on confirme direct.
-      await onConfirm(p.id, intent, null);
-    }
+    if (needsPosition) setMode('position');
+    else setMode('pin'); // On passe à l'étape PIN direct si pas besoin de position
   };
 
   const submitNew = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
     try {
-      // Niveau par défaut 5 — l'admin pourra l'ajuster ensuite via la page Joueurs.
+      // Par défaut, le PIN d'un nouveau joueur sera 1234 (l'admin pourra changer)
       const p = await onCreate(newName.trim(), 5);
       setSelected(p);
       if (needsPosition) setMode('position');
-      else await onConfirm(p.id, intent, null);
+      else setMode('pin');
     } catch { /* silent */ }
   };
 
   const headTitle =
     mode === 'pick'     ? tr('who_confirms') :
     mode === 'new'      ? tr('new_player')   :
-    mode === 'position' ? tr('pick_position', { name: selected?.name || '' }) : '';
+    mode === 'position' ? tr('pick_position', { name: selected?.name || '' }) : 
+    mode === 'pin'      ? 'Code de Sécurité' : '';
 
-  const intentBadgeClass =
-    intent === 'yes' ? 'intent-badge-yes' :
-    intent === 'maybe' ? 'intent-badge-maybe' :
-    'intent-badge-no';
-  const intentBadgeLbl =
-    intent === 'yes' ? `⚽ ${tr('vote_yes')}` :
-    intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` :
-    `❌ ${tr('vote_no')}`;
+  const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : 'intent-badge-no';
+  const intentBadgeLbl = intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
@@ -739,23 +830,37 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
             <p className="pp-intro">{tr('position_intro')}</p>
             <div className="position-grid">
               {POSITIONS.map(p => (
-                <button
-                  key={p.code}
-                  className={`pos-card pos-card-${p.code} ${position === p.code ? 'selected' : ''}`}
-                  onClick={() => setPosition(p.code)}
-                >
-                  <span className="pos-code">{p.code}</span>
-                  <span className="pos-name">{tr(p.key)}</span>
+                <button key={p.code} type="button" className={`pos-card pos-card-${p.code} ${position === p.code ? 'selected' : ''}`} onClick={() => setPosition(p.code)}>
+                  <span className="pos-code">{p.code}</span><span className="pos-name">{tr(p.key)}</span>
                 </button>
               ))}
             </div>
             <div className="row-actions">
               <button className="btn-ghost" onClick={() => setMode('pick')}>{tr('back')}</button>
-              <button className="btn-primary" disabled={!position} onClick={() => onConfirm(selected.id, 'yes', position)}>
-                {tr('confirm_presence')}
-              </button>
+              <button className="btn-primary" disabled={!position} onClick={() => setMode('pin')}>{tr('next')}</button>
             </div>
           </div>
+        )}
+
+        {/* NOUVELLE ÉTAPE : LE CODE PIN */}
+        {mode === 'pin' && selected && (
+          <form className="new-form" onSubmit={(e) => { e.preventDefault(); onConfirm(selected.id, intent, position, pin); }}>
+            <p className="pp-intro">Saisissez votre code PIN à 4 chiffres pour confirmer.</p>
+            <input 
+              type="password" 
+              inputMode="numeric" 
+              maxLength="4" 
+              placeholder="••••" 
+              value={pin} 
+              onChange={e => setPin(e.target.value)} 
+              autoFocus 
+              style={{ fontSize: '2rem', textAlign: 'center', letterSpacing: '0.5em' }}
+            />
+            <div className="row-actions">
+              <button type="button" className="btn-ghost" onClick={() => needsPosition ? setMode('position') : setMode('pick')}>{tr('back')}</button>
+              <button type="submit" className="btn-primary" disabled={pin.length < 4}>Valider la présence 🔥</button>
+            </div>
+          </form>
         )}
       </div>
     </div>
@@ -868,6 +973,33 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, 
     setGoalPlayer(''); setGoalCount(1);
   };
 
+
+  // Génération du message WhatsApp — i18n FR/DE
+  const shareToWhatsApp = () => {
+    if (!teamA || !teamB) return;
+    const fmt = teams?.format?.format || '';
+
+    let msg = `${tr('wa_title')}\n\n`;
+    msg += `${tr('wa_meet')}\n`;
+    if (fmt) msg += `${tr('wa_format')} ${fmt}\n`;
+    msg += `\n`;
+
+    msg += `${tr('wa_team_a')} (${teamA.total.toFixed(1)} pts)\n`;
+    teamA.starters.forEach(p => { msg += `• ${p.name}${p.position ? ' ('+p.position+')' : ''}\n`; });
+    if (teamA.subs.length > 0) msg += `${tr('wa_subs')} ${teamA.subs.map(s => s.name).join(', ')}\n`;
+    msg += `\n`;
+
+    msg += `${tr('wa_team_b')} (${teamB.total.toFixed(1)} pts)\n`;
+    teamB.starters.forEach(p => { msg += `• ${p.name}${p.position ? ' ('+p.position+')' : ''}\n`; });
+    if (teamB.subs.length > 0) msg += `${tr('wa_subs')} ${teamB.subs.map(s => s.name).join(', ')}\n`;
+    msg += `\n`;
+
+    msg += tr('wa_warn_late');
+
+    const encodedMsg = encodeURIComponent(msg);
+    window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
+  };
+
   const allStarters = [...teamA.starters.map(p => ({ ...p, team: 'A' })), ...teamB.starters.map(p => ({ ...p, team: 'B' }))];
 
   return (
@@ -875,7 +1007,10 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, 
       <section className="panel stadium-panel">
         <div className="panel-head">
           <h2>🏟️ {tr('stadium')} · {teams.format.type}</h2>
-          {isAdmin && <button className="btn-ghost" onClick={onReload}>{tr('redraw_teams')}</button>}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {isAdmin && <button className="btn-ghost" onClick={onReload}>🔄</button>}
+            {isAdmin && <button className="btn-whatsapp" onClick={shareToWhatsApp}>📲 WhatsApp</button>}
+          </div>
         </div>
 
         <div className="format-banner">
@@ -1118,6 +1253,49 @@ function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine
   const [expAmount, setExpAmount] = useState('');
   const [fineOpen, setFineOpen] = useState(false);
 
+  // Export comptable CSV — amendes + dépenses, avec date, échappement RFC 4180,
+  // BOM UTF-8 (sinon Excel mal-décode les accents).
+  const exportCSV = async () => {
+    const esc = (v) => {
+      const s = (v ?? '').toString();
+      return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Berlin' }) : '';
+
+    let expensesData = [];
+    try { expensesData = await api.listExpenses(); } catch { /* ignore — au pire on n'exporte que les amendes */ }
+
+    const header = [tr('csv_col_date'), tr('csv_col_type'), tr('csv_col_player'), tr('csv_col_reason'), tr('csv_col_amount'), tr('csv_col_status')]
+      .map(esc).join(';') + '\n';
+
+    const fineRows = fines.map(f => [
+      fmt(f.created_at), tr('csv_type_fine'), f.name, f.reason,
+      Number(f.amount).toFixed(2).replace('.', ','),
+      f.paid ? tr('csv_status_paid') : tr('csv_status_due'),
+    ].map(esc).join(';')).join('\n');
+
+    const expRows = expensesData.map(e => [
+      fmt(e.created_at), tr('csv_type_expense'), '', e.reason,
+      Number(e.amount).toFixed(2).replace('.', ','),
+      tr('csv_status_paid'),
+    ].map(esc).join(';')).join('\n');
+
+    const totalsRow = [
+      fmt(new Date().toISOString()), 'TOTAL', '', '',
+      Number(caisse.balance).toFixed(2).replace('.', ','),
+      caisse.balance >= 0 ? '+' : '-',
+    ].map(esc).join(';');
+
+    const csv = '\uFEFF' + header + fineRows + (expRows ? '\n' + expRows : '') + '\n' + totalsRow + '\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `CAMAS_Tresorerie_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <section className={`panel balance-hero ${caisse.balance >= 0 ? 'positive' : 'negative'}`}>
@@ -1129,8 +1307,12 @@ function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine
           <div><span>{tr('expenses')}</span><strong>{caisse.expenses.toFixed(2)} €</strong></div>
         </div>
       </section>
+
       <section className="panel">
-        <div className="panel-head"><h2>{tr('add_expense')}</h2></div>
+        <div className="panel-head">
+          <h2>{tr('add_expense')}</h2>
+          <button className="btn-ghost" onClick={exportCSV}>{tr('csv_btn')}</button>
+        </div>
         <form className="inline-form" onSubmit={e => {
           e.preventDefault();
           if (!expReason.trim() || !expAmount) return;
@@ -1142,6 +1324,7 @@ function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine
           <button className="btn-primary" type="submit">{tr('expense_btn')}</button>
         </form>
       </section>
+
       <section className="panel">
         <div className="panel-head">
           <h2>{tr('fines')}</h2>
@@ -1151,18 +1334,46 @@ function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine
           <p className="empty-row">{tr('no_fines')}</p>
         ) : (
           <table className="presences-table">
-            <thead><tr><th>{tr('th_player')}</th><th>{tr('th_reason')}</th><th>{tr('th_amount')}</th><th>{tr('th_status')}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{tr('th_player')}</th>
+                <th>{tr('th_reason')}</th>
+                <th>{tr('th_amount')}</th>
+                <th>Action</th>
+              </tr>
+            </thead>
             <tbody>
               {fines.map(f => (
                 <tr key={f.id} className={f.paid ? 'paid-row' : ''}>
-                  <td>{f.name}</td><td>{f.reason}</td><td><strong>{Number(f.amount).toFixed(2)} €</strong></td>
-                  <td>{f.paid ? <span className="badge badge-green">{tr('paid_badge')}</span> : <button className="btn-sm" onClick={() => onPay(f.id)}>{tr('mark_paid')}</button>}</td>
+                  <td>{f.name}</td>
+                  <td>{f.reason}</td>
+                  <td><strong>{Number(f.amount).toFixed(2)} €</strong></td>
+                  <td>
+                    {f.paid ? (
+                      <span className="badge badge-green">{tr('paid_badge')}</span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button className="btn-sm" onClick={() => onPay(f.id)}>{tr('mark_paid')}</button>
+                        {/* PayPal direct — devise EUR + note traçable (id amende) */}
+                        <a
+                          href={`https://paypal.me/camasev/${Number(f.amount).toFixed(2)}EUR`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-paypal"
+                          title={`PayPal · ${f.reason} · #${f.id}`}
+                        >
+                          PayPal
+                        </a>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+
       {fineOpen && (
         <ManualFineModal tr={tr} players={players} onClose={() => setFineOpen(false)} onSubmit={async (pid, reason, amount) => { await onAddFine(pid, reason, amount); setFineOpen(false); }} />
       )}

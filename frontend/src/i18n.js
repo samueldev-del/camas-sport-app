@@ -362,6 +362,35 @@ const FR = {
   // Stadium read-only score
   score_locked:         'Score officiel',
   score_locked_hint:    'Le score est saisi par le responsable.',
+
+  // Annonces toasts/confirmations
+  ann_published:        '✅ Annonce publiée',
+  ann_delete_confirm:   'Supprimer cette annonce ?',
+  ann_pin_toggle:       '📌 Épingler / Désépingler',
+
+  // Section publique « Annonces du club »
+  public_ann_title:     '📣 Annonces du club',
+  public_ann_empty:     'Aucune annonce pour le moment.',
+
+  // Admin dashboard — header + tabs labels courts
+  admin_dash_title:     '🛠️ Espace responsable',
+  admin_dash_intro:     'Centre de pilotage : annonces, planning, score & buteurs, caisse et amendes.',
+  admin_logout_btn:     '🔓 Se déconnecter',
+  admin_tab_match:      '⚽ Match',
+  admin_tab_ann:        '📣 Annonces',
+  admin_tab_plan:       '📅 Planning',
+  admin_tab_cash:       '💰 Caisse',
+
+  // Admin Match panel — extras
+  admin_match_score_title: 'Score final',
+  admin_match_goals_title: 'Buteurs du jour',
+  admin_match_motm_title:  '🏆 Joueur du jour (résultats)',
+  admin_match_no_motm:     'Aucun vote enregistré pour le moment.',
+
+  // Admin Planning — labels listings
+  admin_plan_list_title:'Matchs programmés',
+  admin_plan_no_match:  'Aucun match programmé.',
+  admin_plan_status_lbl:'Statut',
 };
 
 const DE = {
@@ -715,6 +744,33 @@ const DE = {
 
   score_locked:         'Offizielles Ergebnis',
   score_locked_hint:    'Das Ergebnis wird vom Verantwortlichen eingegeben.',
+
+  // Annonces toasts/confirmations
+  ann_published:        '✅ Mitteilung veröffentlicht',
+  ann_delete_confirm:   'Diese Mitteilung löschen?',
+  ann_pin_toggle:       '📌 Anheften / Lösen',
+
+  // Public Announcements section
+  public_ann_title:     '📣 Vereinsmitteilungen',
+  public_ann_empty:     'Noch keine Mitteilungen.',
+
+  // Admin dashboard — header + tabs
+  admin_dash_title:     '🛠️ Admin-Bereich',
+  admin_dash_intro:     'Steuerzentrale: Mitteilungen, Planung, Ergebnis & Torschützen, Kasse und Strafen.',
+  admin_logout_btn:     '🔓 Abmelden',
+  admin_tab_match:      '⚽ Spiel',
+  admin_tab_ann:        '📣 Mitteilungen',
+  admin_tab_plan:       '📅 Planung',
+  admin_tab_cash:       '💰 Kasse',
+
+  admin_match_score_title: 'Endergebnis',
+  admin_match_goals_title: 'Torschützen des Tages',
+  admin_match_motm_title:  '🏆 Spieler des Tages (Ergebnisse)',
+  admin_match_no_motm:     'Noch keine Stimmen registriert.',
+
+  admin_plan_list_title:'Geplante Spiele',
+  admin_plan_no_match:  'Keine geplanten Spiele.',
+  admin_plan_status_lbl:'Status',
 };
 
 export const DICTS = { fr: FR, de: DE };

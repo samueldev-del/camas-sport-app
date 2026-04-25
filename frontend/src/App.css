@@ -2826,3 +2826,185 @@ h1, h2, h3, h4 {
   color: #fff;
   border-color: #fbc02d;
 }
+
+/* ========================================================
+   ADMIN DASHBOARD — sub-cards, score, photo, planning
+   ======================================================== */
+.admin-card { margin-top: 14px; }
+.admin-subtitle { margin: 4px 0 8px; font-size: 0.95rem; color: var(--green-d); }
+.hint-text { font-size: 0.78rem; color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
+
+.winner-radio { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.winner-pill {
+  flex: 1 1 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  background: #fff;
+  transition: border .15s, background .15s, transform .1s;
+}
+.winner-pill input { display: none; }
+.winner-pill.sel { border-color: var(--green); background: rgba(46,125,50,0.08); }
+.winner-pill:hover { transform: translateY(-1px); }
+
+.photo-preview {
+  margin-top: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f5f7f4;
+  border: 1px solid rgba(0,0,0,0.08);
+  max-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.photo-preview img { width: 100%; height: auto; max-height: 280px; object-fit: cover; display: block; }
+
+.check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0; font-size: 0.92rem; }
+
+/* ===== Annonces (admin) ===== */
+.ann-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fafafa;
+  border: 1px solid #ececec;
+}
+.ann-row.pinned { background: #fff8e0; border-color: #ffd54f; }
+.ann-row-body { flex: 1; min-width: 0; }
+.ann-row-title { display: block; margin-bottom: 4px; color: var(--ink); font-size: 0.96rem; }
+.ann-row-text { margin: 0 0 6px; font-size: 0.92rem; line-height: 1.45; color: #333; white-space: pre-wrap; }
+.ann-row-date { font-size: 0.76rem; color: var(--muted); }
+.ann-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ===== Caisse hero ===== */
+.caisse-hero {
+  background: linear-gradient(135deg, #1c2933 0%, #2e7d32 100%);
+  color: #fff;
+}
+.caisse-hero .panel-head h2 { color: #fff; }
+.caisse-balance {
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 6px 0 14px;
+  letter-spacing: -0.02em;
+}
+.caisse-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.caisse-stat {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.20);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  backdrop-filter: blur(4px);
+}
+.caisse-stat .cs-lbl { font-size: 0.74rem; color: rgba(255,255,255,0.82); text-transform: uppercase; letter-spacing: 0.04em; }
+.caisse-stat .cs-val { font-size: 1.05rem; font-weight: 700; color: #fff; }
+
+/* ===== Public sections (avant footer) ===== */
+.public-ann { background: linear-gradient(180deg, #fff, #fafff7); border-color: rgba(46,125,50,0.18); }
+.public-ann-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.public-ann-row {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.public-ann-row.pinned { background: #fff8e0; border-color: rgba(255,179,0,0.35); }
+.public-ann-row .pin-flag { position: absolute; top: 10px; right: 12px; font-size: 0.85rem; }
+.public-ann-title { display: block; margin-bottom: 4px; color: var(--ink); font-size: 0.98rem; }
+.public-ann-body { margin: 0 0 6px; font-size: 0.92rem; line-height: 1.5; color: #333; white-space: pre-wrap; }
+.public-ann-date { font-size: 0.76rem; color: var(--muted); }
+
+/* ===== Galerie vainqueurs ===== */
+.gallery-section { background: linear-gradient(180deg, #fff, #fff8e0); border-color: rgba(255,179,0,0.30); }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.gallery-card {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  display: flex;
+  flex-direction: column;
+}
+.gallery-photo { background: #1c2933; aspect-ratio: 4 / 3; overflow: hidden; }
+.gallery-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.gallery-date { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.gallery-score { font-size: 1.2rem; font-weight: 800; color: var(--ink); letter-spacing: 0.02em; }
+.gallery-winner { font-size: 0.80rem; padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+.gallery-winner-A { background: rgba(46,125,50,0.12); color: var(--green-d); }
+.gallery-winner-B { background: rgba(211,47,47,0.10); color: #b71c1c; }
+.gallery-winner-draw { background: rgba(0,0,0,0.06); color: #444; }
+
+/* ===== Stadium official score (lecture seule) ===== */
+.official-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 14px;
+  background: linear-gradient(120deg, #1c2933, #2e7d32);
+  color: #fff;
+  border-radius: 14px;
+  padding: 18px;
+  margin: 8px 0 14px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+.official-score .os-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.official-score .os-team span { font-size: 0.78rem; opacity: 0.82; text-transform: uppercase; letter-spacing: 0.04em; }
+.official-score .os-team strong { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; }
+.official-score .os-vs { font-size: 0.86rem; opacity: 0.76; font-weight: 600; }
+
+/* ===== MotM section (HomePage) ===== */
+.motm-section {
+  background: linear-gradient(180deg, #fffaf0, #fff);
+  border-color: rgba(255,179,0,0.25);
+}
+.motm-section .panel-head h2 { color: #b07a00; }
+.motm-section .motm-form select { padding: 9px 12px; border-radius: 10px; border: 1.5px solid #e0e0e0; font-size: 0.92rem; background: #fff; }
+.motm-section .motm-form select:focus { outline: none; border-color: #ffb300; box-shadow: 0 0 0 3px rgba(255,179,0,0.18); }
+.motm-section .motm-results { margin-top: 16px; padding-top: 14px; border-top: 1px dashed rgba(255,179,0,0.35); }
+
+/* ===== Mobile ===== */
+@media (max-width: 720px) {
+  .caisse-balance { font-size: 1.7rem; }
+  .caisse-grid { grid-template-columns: 1fr; }
+  .gallery-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .official-score { padding: 14px; }
+  .official-score .os-team strong { font-size: 1.7rem; }
+  .winner-pill { flex: 1 1 calc(50% - 8px); padding: 9px 8px; font-size: 0.82rem; }
+}
+@media (max-width: 480px) {
+  .gallery-grid { grid-template-columns: 1fr; }
+  .ann-row { flex-direction: column; }
+  .ann-row-actions { align-self: flex-end; }
+}

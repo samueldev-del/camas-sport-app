@@ -133,6 +133,10 @@ export default function App() {
   const [announcements, setAnnouncements] = useState([]);
   const [motmResults, setMotmResults] = useState([]);
   const [motmLast, setMotmLast] = useState(null);
+  // Galerie publique des photos de matchs vainqueurs (chargée côté accueil)
+  const [gallery, setGallery] = useState([]);
+  // Calendrier des matchs programmés (admin uniquement)
+  const [calendar, setCalendar] = useState([]);
   const [legal, setLegal] = useState(null);            // 'impressum' | 'privacy' | null
   const [cookieAck, setCookieAck] = useState(() => {
     try { return localStorage.getItem('camas_cookie_ack') === '1'; } catch { return true; }
@@ -188,13 +192,15 @@ export default function App() {
 
   const loadHome = useCallback(async () => {
     try {
-      const [m, ps, last, anns, ml] = await Promise.all([
+      const [m, ps, last, anns, ml, gal] = await Promise.all([
         api.currentMatch(), api.listPlayers(), api.lastMatch(),
         api.listAnnouncements().catch(() => []),
         api.motmLast().catch(() => null),
+        api.matchGallery().catch(() => []),
       ]);
       setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
       setAnnouncements(anns); setMotmLast(ml);
+      setGallery(gal);
       // Load MotM results for current match
       if (m.match?.id) {
         try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
@@ -205,11 +211,12 @@ export default function App() {
   const loadAdmin = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const [f, c, a] = await Promise.all([
+      const [f, c, a, cal] = await Promise.all([
         api.fines(), api.caisse(),
         api.listAnnouncements().catch(() => []),
+        api.matchCalendar().catch(() => []),
       ]);
-      setFines(f); setCaisse(c); setAnnouncements(a);
+      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal);
     } catch (e) { console.warn(e); }
   }, [isAdmin]);
 
@@ -354,15 +361,17 @@ export default function App() {
           {tab === 'admin' && (
             isAdmin ? (
               <AdminDashboard
-                tr={tr}
+                tr={tr} lang={lang}
                 announcements={announcements} fines={fines} caisse={caisse}
                 players={players} match={match} motmResults={motmResults}
+                teams={teams} matchGoals={matchGoals} calendar={calendar}
+                onLogout={onAdminLogout}
                 onAddAnnouncement={async (body, title, pinned) => {
-                  try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash('✅', 'ok'); }
+                  try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash(tr('ann_published'), 'ok'); }
                   catch (e) { flash(e.message, 'err'); }
                 }}
                 onDeleteAnnouncement={async (id) => {
-                  if (!confirm('Supprimer cette annonce ?')) return;
+                  if (!confirm(tr('ann_delete_confirm'))) return;
                   try { await api.deleteAnnouncement(id); loadAdmin(); loadHome(); }
                   catch (e) { flash(e.message, 'err'); }
                 }}
@@ -373,16 +382,39 @@ export default function App() {
                 onPay={async (id) => { try { await api.payFine(id); loadAdmin(); flash(tr('fine_paid')); } catch (e) { flash(e.message, 'err'); } }}
                 onAddExpense={async (reason, amount) => { try { await api.addExpense({ reason, amount }); loadAdmin(); flash(tr('expense_added')); } catch (e) { flash(e.message, 'err'); } }}
                 onAddFine={async (playerId, reason, amount) => { try { await api.addFine({ playerId, reason, amount }); loadAdmin(); flash(tr('fine_added')); } catch (e) { flash(e.message, 'err'); } }}
-                onLogout={onAdminLogout}
-                // Ajout de la prop onUpdateMatch
-                onUpdateMatch={async (id, data) => {
-                  try { await api.updateMatch(id, data); loadHome(); flash('Match mis à jour !', 'ok'); }
+                onSaveScore={async (matchId, a, b) => {
+                  try { await api.setResult(matchId, a, b); await loadTeams(); await loadHome(); flash(tr('score_saved'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onAddGoal={async (matchId, playerId, goals, assists) => {
+                  try { await api.recordGoals({ matchId, playerId, goals, assists }); await loadTeams(); flash(tr('goal_saved'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onSetMatchPhoto={async (matchId, photoUrl, winnerTeam) => {
+                  try { await api.setMatchPhoto(matchId, photoUrl, winnerTeam); await loadHome(); flash(tr('admin_match_photo_ok'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
+                onScheduleMatch={async (date, kickoff, notes) => {
+                  try { const r = await api.scheduleMatch(date, kickoff, notes); await loadAdmin(); flash(r.created ? tr('admin_plan_created') : tr('admin_plan_existing'), 'ok'); return r; }
+                  catch (e) { flash(e.message, 'err'); throw e; }
+                }}
+                onDeleteMatch={async (id) => {
+                  if (!confirm(tr('admin_plan_del_confirm'))) return;
+                  try { await api.deleteMatch(id); await loadAdmin(); }
                   catch (e) { flash(e.message, 'err'); }
                 }}
               />
             ) : (
               <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
             )
+          )}
+
+          {/* SECTIONS PUBLIQUES — annonces + galerie vainqueurs (visibles sur l'accueil ET tous les onglets, juste avant le footer) */}
+          {tab !== 'admin' && (
+            <>
+              <PublicAnnouncementsSection tr={tr} lang={lang} announcements={announcements} />
+              <WinningGallerySection tr={tr} lang={lang} gallery={gallery} />
+            </>
           )}
         </main>
 
@@ -522,7 +554,7 @@ function LockedSection({ tr, onUnlock }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, onConfirm, onUnvote, onCreatePlayer }) {
+function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -543,15 +575,15 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
     <>
       {lastMatch && <LastMatchCard tr={tr} lang={lang} lastMatch={lastMatch} />}
 
-      {/* Annonces du responsable (lecture publique) */}
-      {/* <AnnouncementsFeed tr={tr} lang={lang} announcements={announcements} /> */}
-      {/* Vote « Joueur du jour » */}
-      {/* <MotMSection
+      {/* Vote « Joueur du jour » — visible quand un match est en cours */}
+      <MotMSection
         tr={tr} lang={lang}
         match={match} attendees={attendees} players={players}
         results={motmResults} lastWinner={motmLast}
         onVote={onMotmVote}
-      /> */}
+      />
+      {/* Note: announcements et galerie sont rendues juste avant le footer (cf. App) */}
+      {announcements && announcements.length > 0 && null}
       <div className="grid-top">
         <section className="panel presences-panel">
           <div className="panel-head">
@@ -942,19 +974,7 @@ function PlayersPage({ tr, isAdmin, players, attendees, onReload, flash }) {
 /* ========================================================
    STADIUM PAGE
    ======================================================== */
-function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, onAddGoal, onSetPosition }) {
-  const [scoreA, setScoreA] = useState('');
-  const [scoreB, setScoreB] = useState('');
-  const [goalPlayer, setGoalPlayer] = useState('');
-  const [goalCount, setGoalCount] = useState(1);
-
-  useLayoutEffect(() => {
-    Promise.resolve().then(() => {
-      if (match?.team_a_score != null && String(match.team_a_score) !== scoreA) setScoreA(String(match.team_a_score));
-      if (match?.team_b_score != null && String(match.team_b_score) !== scoreB) setScoreB(String(match.team_b_score));
-    });
-  }, [match, scoreA, scoreB]);
-
+function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSetPosition }) {
   if (!teams) return <section className="panel"><p className="empty-row">{tr('loading')}</p></section>;
   if (teams.count < 2) {
     return (
@@ -968,23 +988,7 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, 
   const [teamA, teamB] = teams.teams;
   const diff = Math.abs(teamA.total - teamB.total);
   const goalsByPlayer = Object.fromEntries(goals.map(g => [g.player_id, g]));
-
-  const saveScore = (e) => {
-    e.preventDefault();
-    const a = parseInt(scoreA, 10);
-    const b = parseInt(scoreB, 10);
-    if (Number.isNaN(a) || Number.isNaN(b)) return;
-    onSaveScore(a, b);
-  };
-
-  const addGoal = (e) => {
-    e.preventDefault();
-    if (!goalPlayer) return;
-    const pid = parseInt(goalPlayer, 10);
-    const existing = goalsByPlayer[pid]?.goals || 0;
-    onAddGoal(pid, existing + parseInt(goalCount, 10), goalsByPlayer[pid]?.assists || 0);
-    setGoalPlayer(''); setGoalCount(1);
-  };
+  const hasOfficialScore = match?.team_a_score != null && match?.team_b_score != null;
 
 
   // Génération du message WhatsApp — i18n FR/DE
@@ -1013,8 +1017,6 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, 
     window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
   };
 
-  const allStarters = [...teamA.starters.map(p => ({ ...p, team: 'A' })), ...teamB.starters.map(p => ({ ...p, team: 'B' }))];
-
   return (
     <>
       <section className="panel stadium-panel">
@@ -1036,61 +1038,48 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSaveScore, 
         <Pitch tr={tr} isAdmin={isAdmin} teamA={teamA.starters} teamB={teamB.starters} goalsByPlayer={goalsByPlayer} onSetPosition={onSetPosition} />
       </section>
 
-      {/* SCORE + BUTEURS — admin only */}
-      {isAdmin ? (
-        <section className="panel">
-          <div className="panel-head"><h2>{tr('match_result')}</h2></div>
-
-          <form className="score-form" onSubmit={saveScore}>
-            <div className="score-input">
-              <label>{tr('team_a')}</label>
-              <input type="number" min="0" max="99" value={scoreA} onChange={e => setScoreA(e.target.value)} placeholder="0" />
+      {/* SCORE + BUTEURS — lecture seule (la saisie est faite par le responsable depuis l'admin) */}
+      <section className="panel">
+        <div className="panel-head">
+          <h2>{tr('score_locked')}</h2>
+          {!isAdmin && <span className="locked-icon-sm" title={tr('score_locked_hint')}>🔒</span>}
+        </div>
+        {hasOfficialScore ? (
+          <div className="official-score">
+            <div className="os-team os-team-a">
+              <span>{tr('team_a')}</span>
+              <strong>{match.team_a_score}</strong>
             </div>
-            <div className="score-dash">—</div>
-            <div className="score-input">
-              <label>{tr('team_b')}</label>
-              <input type="number" min="0" max="99" value={scoreB} onChange={e => setScoreB(e.target.value)} placeholder="0" />
+            <span className="os-vs">{tr('vs')}</span>
+            <div className="os-team os-team-b">
+              <strong>{match.team_b_score}</strong>
+              <span>{tr('team_b')}</span>
             </div>
-            <button type="submit" className="btn-primary">{tr('save_score')}</button>
-          </form>
-
-          <div className="goals-block">
-            <h3>{tr('buteurs')}</h3>
-            <form className="inline-form" onSubmit={addGoal}>
-              <select value={goalPlayer} onChange={e => setGoalPlayer(e.target.value)}>
-                <option value="">{tr('pick_player')}</option>
-                {allStarters.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.team})</option>
-                ))}
-              </select>
-              <input type="number" min="1" max="10" value={goalCount} onChange={e => setGoalCount(e.target.value)} />
-              <button className="btn-primary" type="submit">{tr('add_goal')}</button>
-            </form>
-            {goals.length === 0 ? (
-              <p className="empty-row">{tr('no_goals_yet')}</p>
-            ) : (
-              <ul className="goals-list">
-                {goals.map(g => {
-                  const teamLetter = teamA.starters.some(p => p.id === g.player_id) ? 'A' : teamB.starters.some(p => p.id === g.player_id) ? 'B' : null;
-                  return (
-                    <li key={g.id}>
-                      <span className="goal-icon">⚽</span>
-                      <span className="goal-name">{g.name}</span>
-                      {teamLetter && <span className={`pos-tag pos-team-${teamLetter}`}>{teamLetter === 'A' ? tr('team_a') : tr('team_b')}</span>}
-                      <span className="goal-count">×{g.goals}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
           </div>
-        </section>
-      ) : (
-        <section className="panel locked-inline">
-          <div className="locked-icon-sm">🔒</div>
-          <p>{tr('admin_locked_hint')}</p>
-        </section>
-      )}
+        ) : (
+          <p className="empty-row">{tr('score_locked_hint')}</p>
+        )}
+        <div className="goals-block">
+          <h3>{tr('buteurs')}</h3>
+          {goals.length === 0 ? (
+            <p className="empty-row">{tr('no_goals_yet')}</p>
+          ) : (
+            <ul className="goals-list">
+              {goals.map(g => {
+                const teamLetter = teamA.starters.some(p => p.id === g.player_id) ? 'A' : teamB.starters.some(p => p.id === g.player_id) ? 'B' : null;
+                return (
+                  <li key={g.id}>
+                    <span className="goal-icon">⚽</span>
+                    <span className="goal-name">{g.name}</span>
+                    {teamLetter && <span className={`pos-tag pos-team-${teamLetter}`}>{teamLetter === 'A' ? tr('team_a') : tr('team_b')}</span>}
+                    <span className="goal-count">×{g.goals}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
 
       {/* REMPLAÇANTS */}
       <section className="panel">
@@ -1262,88 +1251,689 @@ function StatsPage({ tr, scorers, attendance }) {
 }
 
 /* ========================================================
-   ADMIN DASHBOARD — sous-sections Annonces / MotM / Caisse
+   ADMIN DASHBOARD — 4 sous-sections claires
+   Match · Annonces · Planning · Caisse
    ======================================================== */
-function AdminDashboard({ onLogout, onUpdateMatch, match }) {
+function AdminDashboard({
+  tr, lang,
+  announcements, fines, caisse, players,
+  match, motmResults, teams, matchGoals, calendar,
+  onLogout,
+  onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
+  onPay, onAddExpense, onAddFine,
+  onSaveScore, onAddGoal, onSetMatchPhoto,
+  onScheduleMatch, onDeleteMatch,
+}) {
   const [section, setSection] = useState('match');
 
   return (
     <>
       <section className="panel admin-hero">
         <div className="panel-head admin-hero-head">
-          <h2>🛠️ Admin Dashboard</h2>
-          <button className="btn-admin-logout" onClick={onLogout} title="Déconnexion admin">
-            🔓 <span>Déconnexion</span>
+          <h2>{tr('admin_dash_title')}</h2>
+          <button className="btn-admin-logout" onClick={onLogout} title={tr('admin_logout_btn')}>
+            {tr('admin_logout_btn')}
           </button>
         </div>
-        <p className="admin-welcome">Bienvenue dans l'espace admin.</p>
+        <p className="admin-welcome">{tr('admin_dash_intro')}</p>
         <div className="admin-tabs">
-          <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>📅 Match</button>
-          <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>Annonces</button>
-          <button className={`admin-tab ${section === 'motm' ? 'active' : ''}`} onClick={() => setSection('motm')}>MotM</button>
-          <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>Caisse</button>
+          <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>{tr('admin_tab_match')}</button>
+          <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_tab_ann')}</button>
+          <button className={`admin-tab ${section === 'plan' ? 'active' : ''}`} onClick={() => setSection('plan')}>{tr('admin_tab_plan')}</button>
+          <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>{tr('admin_tab_cash')}</button>
         </div>
       </section>
+
       {section === 'match' && (
-        <AdminMatchSettings match={match} onUpdateMatch={onUpdateMatch} />
+        <AdminMatchPanel
+          tr={tr} lang={lang}
+          match={match} teams={teams} matchGoals={matchGoals}
+          motmResults={motmResults} players={players}
+          onSaveScore={onSaveScore}
+          onAddGoal={onAddGoal}
+          onSetMatchPhoto={onSetMatchPhoto}
+        />
       )}
+
       {section === 'ann' && (
-        <section className="panel">
-          <p>Section annonces (à compléter).</p>
-        </section>
+        <AdminAnnouncementsPanel
+          tr={tr} lang={lang}
+          announcements={announcements}
+          onAdd={onAddAnnouncement}
+          onDelete={onDeleteAnnouncement}
+          onTogglePin={onTogglePin}
+        />
       )}
-      {section === 'motm' && (
-        <section className="panel">
-          <p>Section MotM (à compléter).</p>
-        </section>
+
+      {section === 'plan' && (
+        <AdminPlanningPanel
+          tr={tr} lang={lang}
+          calendar={calendar}
+          onSchedule={onScheduleMatch}
+          onDelete={onDeleteMatch}
+        />
       )}
+
       {section === 'cash' && (
-        <section className="panel">
-          <p>Section caisse (à compléter).</p>
-        </section>
+        <CaissePage
+          tr={tr}
+          fines={fines} caisse={caisse} players={players}
+          onPay={onPay} onAddExpense={onAddExpense} onAddFine={onAddFine}
+        />
       )}
     </>
   );
 }
 
-// ===============================
-// ADMIN MATCH SETTINGS COMPONENT
-// ===============================
-function AdminMatchSettings({ match, onUpdateMatch }) {
-  const [date, setDate] = useState(match?.match_date ? new Date(match.match_date).toISOString().split('T')[0] : '');
-  const [kickoff, setKickoff] = useState(match?.kickoff_local || '10:00');
+/* ========================================================
+   ADMIN — MATCH PANEL : score + buteurs + photo + MotM
+   ======================================================== */
+function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, players, onSaveScore, onAddGoal, onSetMatchPhoto }) {
+  const [scoreA, setScoreA] = useState('');
+  const [scoreB, setScoreB] = useState('');
+  const [goalPlayer, setGoalPlayer] = useState('');
+  const [goalCount, setGoalCount] = useState(1);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [winnerTeam, setWinnerTeam] = useState('A');
+
+  useLayoutEffect(() => {
+    Promise.resolve().then(() => {
+      if (match?.team_a_score != null && String(match.team_a_score) !== scoreA) setScoreA(String(match.team_a_score));
+      if (match?.team_b_score != null && String(match.team_b_score) !== scoreB) setScoreB(String(match.team_b_score));
+      if (match?.photo_url && !photoUrl) setPhotoUrl(match.photo_url);
+      if (match?.winner_team && match.winner_team !== winnerTeam) setWinnerTeam(match.winner_team);
+    });
+  }, [match, scoreA, scoreB, photoUrl, winnerTeam]);
+
+  if (!match) {
+    return (
+      <section className="panel">
+        <div className="panel-head"><h2>{tr('admin_tab_match')}</h2></div>
+        <p className="empty-row">{tr('admin_no_current')}</p>
+      </section>
+    );
+  }
+
+  const goalsByPlayer = Object.fromEntries((matchGoals || []).map(g => [g.player_id, g]));
+  // Liste des joueurs sélectionnables pour les buteurs : titulaires des deux équipes si disponibles, sinon tous les joueurs
+  const allCandidates = teams && teams.teams && teams.teams.length === 2
+    ? [
+        ...teams.teams[0].starters.map(p => ({ ...p, team: 'A' })),
+        ...teams.teams[1].starters.map(p => ({ ...p, team: 'B' })),
+      ]
+    : (players || []).map(p => ({ ...p, team: '' }));
+
+  const submitScore = (e) => {
+    e.preventDefault();
+    const a = parseInt(scoreA, 10);
+    const b = parseInt(scoreB, 10);
+    if (Number.isNaN(a) || Number.isNaN(b)) return;
+    onSaveScore(match.id, a, b);
+  };
+
+  const submitGoal = (e) => {
+    e.preventDefault();
+    if (!goalPlayer) return;
+    const pid = parseInt(goalPlayer, 10);
+    const existing = goalsByPlayer[pid]?.goals || 0;
+    onAddGoal(match.id, pid, existing + parseInt(goalCount, 10), goalsByPlayer[pid]?.assists || 0);
+    setGoalPlayer(''); setGoalCount(1);
+  };
+
+  const submitPhoto = (e) => {
+    e.preventDefault();
+    if (!photoUrl.trim()) return;
+    onSetMatchPhoto(match.id, photoUrl.trim(), winnerTeam);
+  };
+
+  return (
+    <>
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('admin_tab_match')} · {fmtShortDate(match.match_date, lang)}</h2></div>
+        <p className="pp-intro">{tr('admin_match_intro')}</p>
+
+        <h3 className="admin-subtitle">{tr('admin_match_score_title')}</h3>
+        <form className="score-form" onSubmit={submitScore}>
+          <div className="score-input">
+            <label>{tr('team_a')}</label>
+            <input type="number" min="0" max="99" value={scoreA} onChange={e => setScoreA(e.target.value)} placeholder="0" />
+          </div>
+          <div className="score-dash">—</div>
+          <div className="score-input">
+            <label>{tr('team_b')}</label>
+            <input type="number" min="0" max="99" value={scoreB} onChange={e => setScoreB(e.target.value)} placeholder="0" />
+          </div>
+          <button type="submit" className="btn-primary">{tr('save_score')}</button>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h3>{tr('admin_match_goals_title')}</h3></div>
+        <form className="inline-form" onSubmit={submitGoal}>
+          <select value={goalPlayer} onChange={e => setGoalPlayer(e.target.value)}>
+            <option value="">{tr('pick_player')}</option>
+            {allCandidates.map(p => (
+              <option key={p.id} value={p.id}>{p.name}{p.team ? ` (${p.team})` : ''}</option>
+            ))}
+          </select>
+          <input type="number" min="1" max="10" value={goalCount} onChange={e => setGoalCount(e.target.value)} />
+          <button className="btn-primary" type="submit">{tr('add_goal')}</button>
+        </form>
+        {(matchGoals || []).length === 0 ? (
+          <p className="empty-row">{tr('no_goals_yet')}</p>
+        ) : (
+          <ul className="goals-list">
+            {matchGoals.map(g => (
+              <li key={g.id}>
+                <span className="goal-icon">⚽</span>
+                <span className="goal-name">{g.name}</span>
+                <span className="goal-count">×{g.goals}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h3>{tr('admin_match_photo')}</h3></div>
+        <form className="new-form" onSubmit={submitPhoto}>
+          <label>{tr('admin_match_winner')}</label>
+          <div className="winner-radio">
+            <label className={`winner-pill ${winnerTeam === 'A' ? 'sel' : ''}`}>
+              <input type="radio" name="winner" value="A" checked={winnerTeam === 'A'} onChange={() => setWinnerTeam('A')} />
+              <span>🟢 {tr('winner_a')}</span>
+            </label>
+            <label className={`winner-pill ${winnerTeam === 'B' ? 'sel' : ''}`}>
+              <input type="radio" name="winner" value="B" checked={winnerTeam === 'B'} onChange={() => setWinnerTeam('B')} />
+              <span>🔴 {tr('winner_b')}</span>
+            </label>
+            <label className={`winner-pill ${winnerTeam === 'draw' ? 'sel' : ''}`}>
+              <input type="radio" name="winner" value="draw" checked={winnerTeam === 'draw'} onChange={() => setWinnerTeam('draw')} />
+              <span>🤝 {tr('winner_draw')}</span>
+            </label>
+          </div>
+          <label style={{ marginTop: 12 }}>{tr('admin_match_photo')}</label>
+          <input
+            type="url"
+            value={photoUrl}
+            onChange={e => setPhotoUrl(e.target.value)}
+            placeholder={tr('admin_match_photo_ph')}
+          />
+          <p className="hint-text">{tr('admin_match_photo_hint')}</p>
+          {photoUrl && (
+            <div className="photo-preview">
+              <img src={photoUrl} alt="preview" onError={e => { e.target.style.display = 'none'; }} />
+            </div>
+          )}
+          <div className="row-actions">
+            <button type="submit" className="btn-primary" disabled={!photoUrl.trim()}>{tr('admin_match_photo_save')}</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h3>{tr('admin_match_motm_title')}</h3></div>
+        {(!motmResults || motmResults.length === 0) ? (
+          <p className="empty-row">{tr('admin_match_no_motm')}</p>
+        ) : (
+          <ol className="rank-list">
+            {motmResults.slice(0, 5).map((r, i) => (
+              <li key={r.id} className={`rank-${i + 1}`}>
+                <span className="rank-n">{i + 1}</span>
+                <div className="tile-avatar small">{r.name.slice(0, 1).toUpperCase()}</div>
+                <span className="rank-name">{r.name}</span>
+                <span className="rank-stat">🏆 {r.votes}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* ========================================================
+   ADMIN — ANNOUNCEMENTS PANEL
+   ======================================================== */
+function AdminAnnouncementsPanel({ tr, lang, announcements, onAdd, onDelete, onTogglePin }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [pinned, setPinned] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!match) return;
-    await onUpdateMatch(match.id, { match_date: date, kickoff_local: kickoff });
+    if (!body.trim()) return;
+    await onAdd(body.trim(), title.trim() || null, pinned);
+    setTitle(''); setBody(''); setPinned(false);
   };
 
-  if (!match) return <p className="empty-row">Aucun match en cours.</p>;
+  return (
+    <>
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('publish_announcement')}</h2></div>
+        <form className="new-form" onSubmit={submit}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={tr('ann_title_ph')} />
+          <textarea
+            className="ann-textarea"
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder={tr('ann_body_ph')}
+            rows={4}
+          />
+          <label className="check-row">
+            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} />
+            <span>📌 {tr('pin_label')}</span>
+          </label>
+          <div className="row-actions">
+            <button type="submit" className="btn-primary" disabled={!body.trim()}>{tr('publish_btn')}</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('manage_announcements')}</h2></div>
+        {(!announcements || announcements.length === 0) ? (
+          <p className="empty-row">{tr('ann_empty_admin')}</p>
+        ) : (
+          <ul className="ann-list">
+            {announcements.map(a => (
+              <li key={a.id} className={`ann-row ${a.pinned ? 'pinned' : ''}`}>
+                <div className="ann-row-body">
+                  {a.title && <strong className="ann-row-title">{a.title}</strong>}
+                  <p className="ann-row-text">{a.body}</p>
+                  <span className="ann-row-date">{fmtShortDate(a.created_at, lang)}</span>
+                </div>
+                <div className="ann-row-actions">
+                  <button className="btn-ghost" onClick={() => onTogglePin(a)} title={tr('ann_pin_toggle')}>
+                    {a.pinned ? '📌' : '📍'}
+                  </button>
+                  <button className="row-x" onClick={() => onDelete(a.id)}>🗑</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* ========================================================
+   ADMIN — PLANNING PANEL : programmer & supprimer matchs
+   ======================================================== */
+function AdminPlanningPanel({ tr, lang, calendar, onSchedule, onDelete }) {
+  const [date, setDate] = useState('');
+  const [kickoff, setKickoff] = useState('10:00');
+  const [notes, setNotes] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!date) return;
+    try {
+      await onSchedule(date, kickoff || '10:00', notes.trim() || null);
+      setDate(''); setKickoff('10:00'); setNotes('');
+    } catch { /* géré par toast */ }
+  };
+
+  const statusLabel = (s) =>
+    s === 'open'   ? tr('admin_plan_status_open')   :
+    s === 'closed' ? tr('admin_plan_status_closed') :
+    s === 'done'   ? tr('admin_plan_status_done')   : s;
 
   return (
-    <section className="panel">
-      <div className="panel-head"><h2>⚙️ Paramètres du Match</h2></div>
-      <form className="new-form" onSubmit={submit}>
-        <p className="pp-intro">Si nous ne jouons pas ce dimanche, modifiez la date pour la repousser à la semaine prochaine. Les joueurs inscrits seront conservés.</p>
-        <label>Date prévue</label>
-        <input
-          type="date"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-          required
-          style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }}
+    <>
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('admin_plan_create')}</h2></div>
+        <p className="pp-intro">{tr('admin_plan_intro')}</p>
+        <form className="new-form" onSubmit={submit}>
+          <label>{tr('admin_plan_date')}</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+          <label>{tr('admin_plan_kickoff')}</label>
+          <input type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} />
+          <label>{tr('admin_plan_notes')}</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tr('admin_plan_notes_ph')} />
+          <div className="row-actions">
+            <button type="submit" className="btn-primary" disabled={!date}>{tr('admin_plan_save')}</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('admin_plan_list_title')}</h2></div>
+        {(!calendar || calendar.length === 0) ? (
+          <p className="empty-row">{tr('admin_plan_no_match')}</p>
+        ) : (
+          <table className="presences-table">
+            <thead>
+              <tr>
+                <th>{tr('admin_plan_date')}</th>
+                <th>{tr('admin_plan_kickoff')}</th>
+                <th>{tr('admin_plan_status_lbl')}</th>
+                <th>{tr('admin_plan_notes')}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {calendar.map(m => (
+                <tr key={m.id}>
+                  <td>{fmtShortDate(m.match_date, lang)}</td>
+                  <td>{(m.kickoff_local || '10:00').slice(0,5)}</td>
+                  <td>
+                    <span className={`badge ${m.status === 'done' ? 'badge-muted' : m.status === 'closed' ? 'badge-yellow' : 'badge-green'}`}>
+                      {statusLabel(m.status)}
+                    </span>
+                  </td>
+                  <td className="muted-txt">{m.notes || '—'}</td>
+                  <td>
+                    {m.status !== 'done' && (
+                      <button className="row-x" onClick={() => onDelete(m.id)} title={tr('admin_plan_delete')}>🗑</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* ========================================================
+   CAISSE PAGE — solde + dépenses + amendes (+ amende manuelle)
+   ======================================================== */
+function CaissePage({ tr, fines, caisse, players, onPay, onAddExpense, onAddFine }) {
+  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState('');
+  const [showFineModal, setShowFineModal] = useState(false);
+
+  const submitExpense = (e) => {
+    e.preventDefault();
+    if (!reason.trim() || !amount) return;
+    onAddExpense(reason.trim(), Number(amount));
+    setReason(''); setAmount('');
+  };
+
+  return (
+    <>
+      <section className="panel caisse-hero">
+        <div className="panel-head"><h2>{tr('cash_balance')}</h2></div>
+        <div className="caisse-balance">{Number(caisse?.balance || 0).toFixed(2)} €</div>
+        <div className="caisse-grid">
+          <div className="caisse-stat caisse-paid">
+            <span className="cs-lbl">{tr('paid')}</span>
+            <span className="cs-val">{Number(caisse?.paid_fines || 0).toFixed(2)} €</span>
+          </div>
+          <div className="caisse-stat caisse-due">
+            <span className="cs-lbl">{tr('due')}</span>
+            <span className="cs-val">{Number(caisse?.due_fines || 0).toFixed(2)} €</span>
+          </div>
+          <div className="caisse-stat caisse-exp">
+            <span className="cs-lbl">{tr('expenses')}</span>
+            <span className="cs-val">{Number(caisse?.expenses || 0).toFixed(2)} €</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('add_expense')}</h2></div>
+        <form className="inline-form" onSubmit={submitExpense}>
+          <input value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('reason_ph')} />
+          <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={tr('amount_ph')} />
+          <button className="btn-primary" type="submit" disabled={!reason.trim() || !amount}>{tr('expense_btn')}</button>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head">
+          <h2>{tr('fines')}</h2>
+          <button className="btn-primary" onClick={() => setShowFineModal(true)}>{tr('manual_fine')}</button>
+        </div>
+        {(!fines || fines.length === 0) ? (
+          <p className="empty-row">{tr('no_fines')}</p>
+        ) : (
+          <table className="presences-table">
+            <thead>
+              <tr>
+                <th>{tr('th_player')}</th>
+                <th>{tr('th_reason')}</th>
+                <th>{tr('th_amount')}</th>
+                <th>{tr('th_status')}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {fines.map(f => (
+                <tr key={f.id}>
+                  <td>{f.name}</td>
+                  <td>{f.reason}</td>
+                  <td>{Number(f.amount).toFixed(2)} €</td>
+                  <td>
+                    {f.paid
+                      ? <span className="badge badge-green">{tr('paid_badge')}</span>
+                      : <span className="badge badge-red">{tr('due')}</span>}
+                  </td>
+                  <td>
+                    {!f.paid && <button className="btn-ghost" onClick={() => onPay(f.id)}>{tr('mark_paid')}</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {showFineModal && (
+        <ManualFineModal
+          tr={tr}
+          players={players}
+          onClose={() => setShowFineModal(false)}
+          onSubmit={async (playerId, reason, amount) => {
+            await onAddFine(playerId, reason, amount);
+            setShowFineModal(false);
+          }}
         />
-        <label>Heure du coup d'envoi</label>
-        <input
-          type="time"
-          value={kickoff}
-          onChange={e => setKickoff(e.target.value)}
-          required
-          style={{ width: '100%', padding: '10px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #ccc' }}
-        />
-        <button type="submit" className="btn-primary" style={{ width: '100%' }}>Sauvegarder les modifications</button>
+      )}
+    </>
+  );
+}
+
+/* ========================================================
+   MANUAL FINE MODAL — amende ajoutée à la main par l'admin
+   ======================================================== */
+function ManualFineModal({ tr, players, onClose, onSubmit }) {
+  const [pid, setPid] = useState('');
+  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!pid || !reason.trim() || !amount) return;
+    setBusy(true);
+    try { await onSubmit(parseInt(pid, 10), reason.trim(), Number(amount)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="sheet small" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-head">
+          <h3>{tr('new_fine')}</h3>
+          <button className="ghost-btn" onClick={onClose}>✕</button>
+        </div>
+        <form className="new-form" onSubmit={submit}>
+          <label>{tr('th_player')}</label>
+          <select value={pid} onChange={e => setPid(e.target.value)} required>
+            <option value="">{tr('pick_one')}</option>
+            {(players || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <label>{tr('th_reason')}</label>
+          <input value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('fine_reason_ph')} />
+          <label>{tr('amount_eur')}</label>
+          <input type="number" min="0" step="0.5" value={amount} onChange={e => setAmount(e.target.value)} placeholder="2.00" />
+          <div className="row-actions">
+            <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
+            <button type="submit" className="btn-primary" disabled={busy || !pid || !reason.trim() || !amount}>
+              {busy ? '…' : tr('save')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================
+   PUBLIC SECTIONS — annonces + galerie vainqueurs (avant footer)
+   ======================================================== */
+function PublicAnnouncementsSection({ tr, lang, announcements }) {
+  return (
+    <section className="panel public-ann">
+      <div className="panel-head"><h2>{tr('public_ann_title')}</h2></div>
+      {(!announcements || announcements.length === 0) ? (
+        <p className="empty-row">{tr('public_ann_empty')}</p>
+      ) : (
+        <ul className="public-ann-list">
+          {announcements.slice(0, 5).map(a => (
+            <li key={a.id} className={`public-ann-row ${a.pinned ? 'pinned' : ''}`}>
+              {a.pinned && <span className="pin-flag">📌</span>}
+              {a.title && <strong className="public-ann-title">{a.title}</strong>}
+              <p className="public-ann-body">{a.body}</p>
+              <span className="public-ann-date">{fmtShortDate(a.created_at, lang)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function WinningGallerySection({ tr, lang, gallery }) {
+  return (
+    <section className="panel gallery-section">
+      <div className="panel-head"><h2>{tr('gallery_title')}</h2></div>
+      {(!gallery || gallery.length === 0) ? (
+        <p className="empty-row">{tr('gallery_empty')}</p>
+      ) : (
+        <div className="gallery-grid">
+          {gallery.map(g => {
+            const winnerLabel =
+              g.winner_team === 'A' ? tr('winner_a') :
+              g.winner_team === 'B' ? tr('winner_b') :
+              tr('winner_draw');
+            return (
+              <article key={g.id} className="gallery-card">
+                <div className="gallery-photo">
+                  <img src={g.photo_url} alt={`${tr('gallery_winner')} ${fmtShortDate(g.match_date, lang)}`} loading="lazy" />
+                </div>
+                <div className="gallery-meta">
+                  <span className="gallery-date">{fmtShortDate(g.match_date, lang)}</span>
+                  <span className="gallery-score">
+                    {g.team_a_score ?? '–'} : {g.team_b_score ?? '–'}
+                  </span>
+                  <span className={`gallery-winner gallery-winner-${g.winner_team || 'draw'}`}>
+                    🏆 {winnerLabel}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ========================================================
+   MOTM SECTION — vote du joueur du jour (visible joueurs)
+   ======================================================== */
+function MotMSection({ tr, lang, match, attendees, players, results, lastWinner, onVote }) {
+  const [voterId, setVoterId] = useState('');
+  const [votedId, setVotedId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Liste des votants potentiels = joueurs présents (non maybe/absent)
+  const voters = (attendees || [])
+    .filter(a => a.status !== 'maybe' && a.status !== 'absent')
+    .map(a => {
+      const p = (players || []).find(pp => pp.id === a.player_id);
+      return { id: a.player_id, name: p?.name || a.name };
+    });
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!voterId || !votedId) return;
+    if (parseInt(voterId, 10) === parseInt(votedId, 10)) {
+      alert(tr('motm_self_vote_err'));
+      return;
+    }
+    setBusy(true);
+    try { await onVote(parseInt(voterId, 10), parseInt(votedId, 10)); setVoterId(''); setVotedId(''); }
+    finally { setBusy(false); }
+  };
+
+  if (!match) {
+    return (
+      <section className="panel motm-section">
+        <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
+        <p className="empty-row">{tr('motm_locked_no_match')}</p>
+        {lastWinner && lastWinner.player && (
+          <div className="motm-last">
+            <span>{tr('motm_last_winner')}</span>
+            <strong> · {lastWinner.player.name}</strong>
+            <span className="muted-txt"> · {fmtShortDate(lastWinner.match_date, lang)}</span>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  if (!voters.length) {
+    return (
+      <section className="panel motm-section">
+        <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
+        <p className="empty-row">{tr('motm_locked_no_atts')}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel motm-section">
+      <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
+      <p className="pp-intro">{tr('motm_intro')}</p>
+      <form className="motm-form" onSubmit={submit}>
+        <label>{tr('motm_who_are_you')}</label>
+        <select value={voterId} onChange={e => setVoterId(e.target.value)} required>
+          <option value="">{tr('pick_one')}</option>
+          {voters.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+        </select>
+        <label>{tr('motm_pick_player')}</label>
+        <select value={votedId} onChange={e => setVotedId(e.target.value)} required>
+          <option value="">{tr('pick_one')}</option>
+          {voters.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+        </select>
+        <div className="row-actions">
+          <button type="submit" className="btn-primary" disabled={busy || !voterId || !votedId}>{tr('publish_btn')}</button>
+        </div>
       </form>
+
+      {results && results.length > 0 && (
+        <div className="motm-results">
+          <h3>{tr('motm_results')}</h3>
+          <ol className="rank-list">
+            {results.slice(0, 3).map((r, i) => (
+              <li key={r.id} className={`rank-${i + 1}`}>
+                <span className="rank-n">{i + 1}</span>
+                <div className="tile-avatar small">{r.name.slice(0, 1).toUpperCase()}</div>
+                <span className="rank-name">{r.name}</span>
+                <span className="rank-stat">🏆 {r.votes} {r.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </section>
   );
 }

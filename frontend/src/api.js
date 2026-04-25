@@ -47,6 +47,7 @@ export const api = {
   updatePlayer:    (id, body) => req(`/api/players/${id}`, { method: 'PATCH', body }),
   deletePlayer:    (id) => req(`/api/players/${id}`, { method: 'DELETE' }),
   playerProfile:   (id) => req(`/api/players/${id}/profile`),
+  updatePin:       (id, oldPin, newPin) => req(`/api/players/${id}/pin`, { method: 'PATCH', body: { oldPin, newPin } }),
 
   currentMatch:    () => req('/api/match/current'),
   lastMatch:       () => req('/api/match/last'),

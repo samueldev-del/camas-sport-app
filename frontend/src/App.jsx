@@ -315,6 +315,7 @@ export default function App() {
               tr={tr} lang={lang}
               match={match} attendees={attendees} players={players} scorers={scorers} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
+              flash={flash}
               onConfirm={async (pid, intent, position, pin) => {
                 try {
                   // On passe le PIN à l'API
@@ -530,7 +531,7 @@ function LockedSection({ tr, onUnlock }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, announcements, motmResults, motmLast, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
+function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, announcements, motmResults, motmLast, flash, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -700,7 +701,8 @@ function HomePage({ tr, lang, match, attendees, players, scorers, lastMatch, ann
           intent={pickerOpen}
           players={players}
           attendees={attendees}
-          onConfirm={async (pid, intent, position) => { await onConfirm(pid, intent, position); setPickerOpen(false); }}
+          flash={flash}
+          onConfirm={async (pid, intent, position, pin) => { await onConfirm(pid, intent, position, pin); setPickerOpen(false); }}
           onCreate={async (name, rating) => await onCreatePlayer(name, rating)}
           onClose={() => setPickerOpen(false)}
         />
@@ -746,14 +748,39 @@ function LastMatchCard({ tr, lang, lastMatch }) {
 /* ========================================================
    PLAYER PICKER (SÉCURISÉ AVEC CODE PIN)
    ======================================================== */
-function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCreate }) {
+function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClose, onCreate }) {
   const [search, setSearch] = useState('');
   const needsPosition = intent === 'yes';
-  const [mode, setMode] = useState('pick'); // pick | new | position | pin
+  const [mode, setMode] = useState('pick'); // pick | new | position | pin | changepin
   const [selected, setSelected] = useState(null);
   const [newName, setNewName] = useState('');
   const [position, setPosition] = useState(null);
-  const [pin, setPin] = useState(''); // Le code secret
+  const [pin, setPin] = useState(''); // Le code secret saisi pour valider la présence
+
+  // États dédiés au changement de PIN
+  const [oldPinIn, setOldPinIn]         = useState('');
+  const [newPinIn, setNewPinIn]         = useState('');
+  const [confirmPinIn, setConfirmPinIn] = useState('');
+  const [pinBusy, setPinBusy]           = useState(false);
+
+  const submitChangePin = async (e) => {
+    e.preventDefault();
+    if (!/^\d{4}$/.test(newPinIn))   return flash?.(tr('pin_change_err_4'), 'err');
+    if (newPinIn !== confirmPinIn)   return flash?.(tr('pin_change_err_match'), 'err');
+    if (oldPinIn && oldPinIn === newPinIn) return flash?.(tr('pin_change_err_same'), 'err');
+    setPinBusy(true);
+    try {
+      await api.updatePin(selected.id, oldPinIn, newPinIn);
+      flash?.(tr('pin_change_ok'), 'ok');
+      setPin(newPinIn);                 // pré-remplit le champ de validation
+      setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
+      setMode('pin');                   // retour à la validation de présence
+    } catch (err) {
+      flash?.(err.message || tr('pin_change_err_generic'), 'err');
+    } finally {
+      setPinBusy(false);
+    }
+  };
   
   const voted = new Set(attendees.map(a => a.player_id));
   const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
@@ -777,10 +804,11 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
   };
 
   const headTitle =
-    mode === 'pick'     ? tr('who_confirms') :
-    mode === 'new'      ? tr('new_player')   :
-    mode === 'position' ? tr('pick_position', { name: selected?.name || '' }) : 
-    mode === 'pin'      ? 'Code de Sécurité' : '';
+    mode === 'pick'      ? tr('who_confirms') :
+    mode === 'new'       ? tr('new_player')   :
+    mode === 'position'  ? tr('pick_position', { name: selected?.name || '' }) :
+    mode === 'pin'       ? tr('pin_title') :
+    mode === 'changepin' ? tr('pin_change_title') : '';
 
   const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : 'intent-badge-no';
   const intentBadgeLbl = intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
@@ -842,23 +870,77 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
           </div>
         )}
 
-        {/* NOUVELLE ÉTAPE : LE CODE PIN */}
+        {/* ÉTAPE : LE CODE PIN — validation de présence */}
         {mode === 'pin' && selected && (
           <form className="new-form" onSubmit={(e) => { e.preventDefault(); onConfirm(selected.id, intent, position, pin); }}>
-            <p className="pp-intro">Saisissez votre code PIN à 4 chiffres pour confirmer.</p>
-            <input 
-              type="password" 
-              inputMode="numeric" 
-              maxLength="4" 
-              placeholder="••••" 
-              value={pin} 
-              onChange={e => setPin(e.target.value)} 
-              autoFocus 
-              style={{ fontSize: '2rem', textAlign: 'center', letterSpacing: '0.5em' }}
+            <p className="pp-intro">{tr('pin_intro')}</p>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength="4"
+              placeholder="••••"
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+              autoFocus
+              className="pin-input"
             />
             <div className="row-actions">
               <button type="button" className="btn-ghost" onClick={() => needsPosition ? setMode('position') : setMode('pick')}>{tr('back')}</button>
-              <button type="submit" className="btn-primary" disabled={pin.length < 4}>Valider la présence 🔥</button>
+              <button type="submit" className="btn-primary" disabled={pin.length < 4}>{tr('pin_validate')}</button>
+            </div>
+
+            <button
+              type="button"
+              className="pin-change-link"
+              onClick={() => { setOldPinIn(''); setNewPinIn(''); setConfirmPinIn(''); setMode('changepin'); }}
+            >
+              🔒 {tr('pin_change_btn')}
+            </button>
+          </form>
+        )}
+
+        {/* ÉTAPE : CHANGEMENT DE CODE PIN */}
+        {mode === 'changepin' && selected && (
+          <form className="new-form" onSubmit={submitChangePin}>
+            <p className="pp-intro">{tr('pin_change_intro', { name: selected.name })}</p>
+
+            <label className="pin-lbl">{tr('pin_change_old')}</label>
+            <input
+              type="password" inputMode="numeric" maxLength="4"
+              placeholder="••••"
+              value={oldPinIn}
+              onChange={e => setOldPinIn(e.target.value.replace(/\D/g, ''))}
+              className="pin-input"
+              autoFocus
+            />
+
+            <label className="pin-lbl">{tr('pin_change_new')}</label>
+            <input
+              type="password" inputMode="numeric" maxLength="4"
+              placeholder="••••"
+              value={newPinIn}
+              onChange={e => setNewPinIn(e.target.value.replace(/\D/g, ''))}
+              className="pin-input"
+            />
+
+            <label className="pin-lbl">{tr('pin_change_confirm')}</label>
+            <input
+              type="password" inputMode="numeric" maxLength="4"
+              placeholder="••••"
+              value={confirmPinIn}
+              onChange={e => setConfirmPinIn(e.target.value.replace(/\D/g, ''))}
+              className="pin-input"
+            />
+
+            <div className="row-actions">
+              <button type="button" className="btn-ghost" onClick={() => { setMode('pin'); }}>{tr('cancel')}</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={pinBusy || newPinIn.length < 4 || confirmPinIn.length < 4}
+              >
+                {pinBusy ? '…' : tr('pin_change_save')}
+              </button>
             </div>
           </form>
         )}

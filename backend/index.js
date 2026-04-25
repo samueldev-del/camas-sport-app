@@ -93,6 +93,38 @@ app.post('/api/players', async (req, res) => {
   }
 });
 
+// Modification du code PIN par le joueur lui-même
+// Sécurité : exige l'ancien PIN, sauf si le joueur n'en avait pas encore (PIN vide).
+app.patch('/api/players/:id/pin', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+
+  const { oldPin = '', newPin = '' } = req.body || {};
+
+  if (!/^\d{4}$/.test(newPin)) {
+    return res.status(400).json({ error: 'Le nouveau code doit être 4 chiffres' });
+  }
+  if (oldPin && newPin === oldPin) {
+    return res.status(400).json({ error: 'Le nouveau code doit être différent' });
+  }
+
+  try {
+    const [player] = await sql`SELECT pin FROM players WHERE id = ${id}`;
+    if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+
+    // Si un PIN existe déjà, on vérifie l'ancien. Sinon (premier set), pas besoin.
+    if (player.pin && player.pin !== oldPin) {
+      return res.status(403).json({ error: 'Ancien code PIN incorrect' });
+    }
+
+    await sql`UPDATE players SET pin = ${newPin} WHERE id = ${id}`;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('updatePin error:', e);
+    res.status(500).json({ error: 'Erreur lors de la modification du code' });
+  }
+});
+
 app.patch('/api/players/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { name, rating } = req.body;

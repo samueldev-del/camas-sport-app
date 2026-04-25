@@ -215,6 +215,23 @@ const FR = {
   admin_section_cash:   '🧾 Caisse / Sanctions',
   admin_welcome:        'Espace responsable — gère les annonces, le joueur du jour et la caisse.',
 
+  // PIN validation + changement de code
+  pin_title:            'Code de sécurité',
+  pin_intro:            'Saisissez votre code PIN à 4 chiffres pour confirmer.',
+  pin_validate:         '🔥 Valider la présence',
+  pin_change_btn:       'Modifier mon code PIN',
+  pin_change_title:     'Modifier mon code PIN',
+  pin_change_intro:     'Bonjour {{name}}, sécurise ton compte avec un nouveau code à 4 chiffres.',
+  pin_change_old:       '1. Ancien code (laissez vide si premier code)',
+  pin_change_new:       '2. Nouveau code',
+  pin_change_confirm:   '3. Confirmer le nouveau code',
+  pin_change_save:      'Sauvegarder',
+  pin_change_ok:        '✅ Code PIN modifié',
+  pin_change_err_4:     'Le nouveau code doit être 4 chiffres',
+  pin_change_err_match: 'La confirmation ne correspond pas',
+  pin_change_err_same:  'Le nouveau code doit être différent',
+  pin_change_err_generic: 'Erreur lors de la modification',
+
   // Player card (FUT style)
   card_goals:           'BUT',
   card_assists:         'PAS',
@@ -499,6 +516,23 @@ const DE = {
   admin_section_motm:   '🏆 Spieler des Tages',
   admin_section_cash:   '🧾 Kasse / Strafen',
   admin_welcome:        'Verantwortlicher-Bereich — verwalte Mitteilungen, Spieler des Tages und Kasse.',
+
+  // PIN
+  pin_title:            'Sicherheitscode',
+  pin_intro:            'Gib deinen 4-stelligen PIN ein, um zu bestätigen.',
+  pin_validate:         '🔥 Anwesenheit bestätigen',
+  pin_change_btn:       'PIN ändern',
+  pin_change_title:     'PIN ändern',
+  pin_change_intro:     'Hallo {{name}}, sichere dein Konto mit einem neuen 4-stelligen Code.',
+  pin_change_old:       '1. Alter Code (leer lassen wenn erster Code)',
+  pin_change_new:       '2. Neuer Code',
+  pin_change_confirm:   '3. Neuen Code bestätigen',
+  pin_change_save:      'Speichern',
+  pin_change_ok:        '✅ PIN geändert',
+  pin_change_err_4:     'Der neue Code muss 4 Ziffern haben',
+  pin_change_err_match: 'Bestätigung stimmt nicht überein',
+  pin_change_err_same:  'Der neue Code muss unterschiedlich sein',
+  pin_change_err_generic: 'Fehler beim Ändern',
 
   // Player card (FUT style)
   card_goals:           'TOR',

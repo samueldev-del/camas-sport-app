@@ -1010,6 +1010,45 @@ table { width: 100%; border-collapse: collapse; }
 .row-actions { display: flex; gap: 10px; margin-top: 8px; }
 .row-actions button { flex: 1; padding: 11px; }
 
+/* ===== PIN inputs (validation présence + changement) ===== */
+.pin-input {
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+}
+.pin-input:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.12);
+}
+.pin-lbl {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  font-weight: 600;
+  margin-top: 4px;
+}
+.pin-change-link {
+  margin-top: 14px;
+  background: transparent;
+  border: none;
+  color: var(--green-d);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 6px;
+  align-self: center;
+}
+.pin-change-link:hover { color: var(--green); }
+
 /* ---------- Footer ---------- */
 .footer {
   background: linear-gradient(180deg, #f7faf7 0%, #e8efe8 100%);

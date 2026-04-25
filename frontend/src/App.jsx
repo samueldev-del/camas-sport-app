@@ -210,15 +210,6 @@ export default function App() {
               ))}
             </div>
 
-            <button
-              className={`btn-admin ${isAdmin ? 'is-admin' : ''}`}
-              onClick={() => isAdmin ? onAdminLogout() : setAdminModalOpen(true)}
-              title={isAdmin ? tr('admin_logout') : tr('admin_login')}
-            >
-              {isAdmin ? '🔓' : '🔒'}
-              <span className="btn-admin-lbl">{isAdmin ? tr('admin_logout') : tr('admin_login')}</span>
-            </button>
-
             {installEvt && (
               <button className="btn-install" onClick={async () => { installEvt.prompt(); await installEvt.userChoice; setInstallEvt(null); }}>
                 {tr('install_btn')}
@@ -305,6 +296,7 @@ export default function App() {
                 onPay={async (id) => { try { await api.payFine(id); loadAdmin(); flash(tr('fine_paid')); } catch (e) { flash(e.message, 'err'); } }}
                 onAddExpense={async (reason, amount) => { try { await api.addExpense({ reason, amount }); loadAdmin(); flash(tr('expense_added')); } catch (e) { flash(e.message, 'err'); } }}
                 onAddFine={async (playerId, reason, amount) => { try { await api.addFine({ playerId, reason, amount }); loadAdmin(); flash(tr('fine_added')); } catch (e) { flash(e.message, 'err'); } }}
+                onLogout={onAdminLogout}
               />
             ) : (
               <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
@@ -1337,13 +1329,18 @@ function MotMSection({ tr, lang, match, attendees, players, results, lastWinner,
    ======================================================== */
 function AdminDashboard({ tr, announcements, fines, caisse, players, match, motmResults,
                          onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
-                         onPay, onAddExpense, onAddFine }) {
+                         onPay, onAddExpense, onAddFine, onLogout }) {
   const [section, setSection] = useState('ann');
 
   return (
     <>
       <section className="panel admin-hero">
-        <div className="panel-head"><h2>🛠️ {tr('admin_dashboard')}</h2></div>
+        <div className="panel-head admin-hero-head">
+          <h2>🛠️ {tr('admin_dashboard')}</h2>
+          <button className="btn-admin-logout" onClick={onLogout} title={tr('admin_logout')}>
+            🔓 <span>{tr('admin_logout')}</span>
+          </button>
+        </div>
         <p className="admin-welcome">{tr('admin_welcome')}</p>
         <div className="admin-tabs">
           <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_section_ann')}</button>

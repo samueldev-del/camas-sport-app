@@ -2479,6 +2479,24 @@ h1, h2, h3, h4 {
   pointer-events: none;
 }
 .admin-hero .panel-head h2 { color: #fff; }
+.admin-hero-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.btn-admin-logout {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.30);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.84rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, transform .1s;
+  backdrop-filter: blur(6px);
+}
+.btn-admin-logout:hover { background: rgba(255,255,255,0.22); transform: translateY(-1px); }
+.btn-admin-logout:active { transform: translateY(0); }
 .admin-welcome { margin: 0 0 14px; color: rgba(255,255,255,0.85); font-size: 0.94rem; line-height: 1.5; }
 .admin-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .admin-tab {

@@ -742,90 +742,40 @@ function LastMatchCard({ tr, lang, lastMatch }) {
    ======================================================== */
 function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClose, onCreate }) {
   const [search, setSearch] = useState('');
-  // Cas spécial : intent === 'changepin' → on saute directement à la modification de PIN sans voter
-  const isChangePinFlow = intent === 'changepin';
   const needsPosition = intent === 'yes';
-  const [mode, setMode] = useState('pick'); // pick | new | position | pin | changepin
+  const [mode, setMode] = useState('pick'); // pick | new | position | pin
   const [selected, setSelected] = useState(null);
   const [newName, setNewName] = useState('');
   const [position, setPosition] = useState(null);
   const [pin, setPin] = useState(''); // Le code secret saisi pour valider la présence
 
-  // États dédiés au changement de PIN
-  const [oldPinIn, setOldPinIn]         = useState('');
-  const [newPinIn, setNewPinIn]         = useState('');
-  const [confirmPinIn, setConfirmPinIn] = useState('');
-  const [pinBusy, setPinBusy]           = useState(false);
-
-  const submitChangePin = async (e) => {
-    e.preventDefault();
-    if (!/^\d{4}$/.test(newPinIn))   return flash?.(tr('pin_change_err_4'), 'err');
-    if (newPinIn !== confirmPinIn)   return flash?.(tr('pin_change_err_match'), 'err');
-    if (oldPinIn && oldPinIn === newPinIn) return flash?.(tr('pin_change_err_same'), 'err');
-    setPinBusy(true);
-    try {
-      await api.updatePin(selected.id, oldPinIn, newPinIn);
-      flash?.(tr('pin_change_ok'), 'ok');
-      setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
-      // Si on est arrivé ici via le bouton « Gérer mon PIN », on ferme la fenêtre.
-      // Sinon (flux classique de validation), on revient à l'étape PIN avec le nouveau code pré-rempli.
-      if (isChangePinFlow) {
-        onClose();
-      } else {
-        setPin(newPinIn);
-        setMode('pin');
-      }
-    } catch (err) {
-      flash?.(err.message || tr('pin_change_err_generic'), 'err');
-    } finally {
-      setPinBusy(false);
-    }
-  };
-  
-  const voted = new Set(attendees.map(a => a.player_id));
-  const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
-
-  const choosePlayer = (p) => {
-    setSelected(p);
-    if (isChangePinFlow) {
-      // Flux dédié « Gérer mon PIN » : on saute intent + position + validation
-      setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
-      setMode('changepin');
-    } else if (needsPosition) {
-      setMode('position');
-    } else {
-      setMode('pin'); // On passe à l'étape PIN direct si pas besoin de position
-    }
-  };
-
-  const submitNew = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
     try {
       const p = await onCreate(newName.trim(), 5);
       setSelected(p);
-      if (isChangePinFlow) {
-        setOldPinIn(''); setNewPinIn(''); setConfirmPinIn('');
-        setMode('changepin');
-      } else if (needsPosition) {
-        setMode('position');
-      } else {
-        setMode('pin');
-      }
+      setMode('pin');
     } catch { /* silent */ }
   };
 
+  const voted = new Set(attendees.map(a => a.player_id));
+  const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
+
+  const choosePlayer = (p) => {
+    setSelected(p);
+    setMode('pin');
+  };
+
   const headTitle =
-    isChangePinFlow && mode === 'pick' ? tr('pin_manage_picker') :
     mode === 'pick'      ? tr('who_confirms') :
     mode === 'new'       ? tr('new_player')   :
     mode === 'position'  ? tr('pick_position', { name: selected?.name || '' }) :
     mode === 'pin'       ? tr('pin_title') :
-    mode === 'changepin' ? tr('pin_change_title') : '';
+    '';
 
   const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : intent === 'changepin' ? 'intent-badge-pin' : 'intent-badge-no';
-  const intentBadgeLbl = isChangePinFlow ? `🔒 ${tr('pin_manage_picker')}` :
-    intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
+  const intentBadgeLbl = intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
@@ -843,7 +793,7 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
             <div className="player-grid">
               {filtered.map(p => {
                 // En flux changepin, on N'EXCLUT PAS les joueurs déjà inscrits (un joueur peut toujours modifier son PIN).
-                const blocked = !isChangePinFlow && voted.has(p.id);
+                const blocked = !needsPosition && voted.has(p.id);
                 return (
                   <button
                     key={p.id}
@@ -853,11 +803,11 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
                   >
                     <div className="tile-avatar">{p.name.slice(0, 1).toUpperCase()}</div>
                     <span>{p.name}</span>
-                    {!isChangePinFlow && voted.has(p.id) && <span className="mini-tag">✓</span>}
+                    {!needsPosition && voted.has(p.id) && <span className="mini-tag">✓</span>}
                   </button>
                 );
               })}
-              {!isChangePinFlow && (
+              {!needsPosition && (
                 <button className="player-tile add" onClick={() => setMode('new')}>
                   <div className="tile-avatar plus">+</div>
                   <span>{tr('new_player')}</span>
@@ -868,7 +818,7 @@ function PlayerPicker({ tr, intent, players, attendees, flash, onConfirm, onClos
         )}
 
         {mode === 'new' && (
-          <form className="new-form" onSubmit={submitNew}>
+          <form className="new-form" onSubmit={submit}>
             <label>{tr('full_name')}</label>
             <input value={newName} onChange={e => setNewName(e.target.value)} autoFocus placeholder="Ex: Samuel Djommou" />
             <div className="row-actions">

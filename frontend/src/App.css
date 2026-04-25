@@ -55,6 +55,9 @@ html, body, #root {
   font-size: 14.5px;
   line-height: 1.5;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 button { font-family: inherit; cursor: pointer; border: none; }
@@ -2346,17 +2349,7 @@ h1, h2, h3, h4 {
   }
   .footer-link:hover { color: #fff; border-bottom-color: #fff; }
 
-  /* Legal bar inverse on mobile to stay coherent with dark footer */
-  .legal-bar {
-    background: #0e1a22;
-    border-top: 1px solid rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.70);
-    padding: 16px 16px 18px;
-    gap: 12px;
-    font-size: 0.92rem;
-    /* Pousse la barre légale au-dessus de la nav fixe du bas */
-    margin-bottom: calc(70px + var(--safe-bottom));
-  }
+  /* --- Nettoyage de la barre légale mobile --- */
   .legal-bar {
     font-size: 0.88rem;
     padding: 14px 14px 16px;
@@ -2364,31 +2357,19 @@ h1, h2, h3, h4 {
     background: #0e1a22;
     border-top: 1px solid rgba(255,255,255,0.08);
     color: rgba(255,255,255,0.70);
-    width: 100vw;
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.10);
+    width: 100%;
     position: static;
+    margin-bottom: calc(70px + env(safe-area-inset-bottom)); 
   }
-  body { padding-bottom: 0 !important; }
-  .footer-block strong { font-size: 0.70rem; }
-  .footer-block p { font-size: 0.92rem; }
-  .footer-icon { width: 44px; height: 44px; }
-  .footer-icon svg { width: 20px; height: 20px; }
-  .legal-bar {
-    font-size: 0.88rem;
-    padding: 14px 14px 16px;
-    gap: 10px;
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    z-index: 1000;
-    background: #0e1a22;
-    border-top: 1px solid rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.70);
-    width: 100vw;
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.10);
+
+  body { 
+    padding-bottom: 0 !important; 
   }
-  .legal-link { padding: 7px 9px; font-size: 0.90rem; }
-  .legal-copy { font-size: 0.82rem; flex-basis: 100%; text-align: center; margin-top: 2px; }
-  body { padding-bottom: 70px !important; }
+
+  .content {
+    padding: 12px; /* <-- On a retiré le calc(78px) qui causait le bug */
+    gap: 12px;
+  }
 }
 
 

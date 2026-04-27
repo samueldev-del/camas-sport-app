@@ -5,6 +5,8 @@
 const BASE = import.meta.env.VITE_API_URL || '';
 
 const ADMIN_KEY = 'camas_admin_code';
+const PLAYER_TOKEN_KEY = 'camas_player_token';
+const PLAYER_USER_KEY = 'camas_player_user';
 
 export function getAdminCode() {
   try { return localStorage.getItem(ADMIN_KEY) || ''; } catch { return ''; }
@@ -17,10 +19,39 @@ export function setAdminCode(code) {
 }
 export function clearAdminCode() { setAdminCode(''); }
 
+export function getPlayerToken() {
+  try { return localStorage.getItem(PLAYER_TOKEN_KEY) || ''; } catch { return ''; }
+}
+export function setPlayerToken(token) {
+  try {
+    if (token) localStorage.setItem(PLAYER_TOKEN_KEY, token);
+    else localStorage.removeItem(PLAYER_TOKEN_KEY);
+  } catch { /* ignore */ }
+}
+export function clearPlayerToken() { setPlayerToken(''); }
+
+export function getStoredPlayer() {
+  try {
+    const raw = localStorage.getItem(PLAYER_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+export function setStoredPlayer(player) {
+  try {
+    if (player) localStorage.setItem(PLAYER_USER_KEY, JSON.stringify(player));
+    else localStorage.removeItem(PLAYER_USER_KEY);
+  } catch { /* ignore */ }
+}
+export function clearStoredPlayer() { setStoredPlayer(null); }
+
 async function req(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const code = getAdminCode();
   if (code) headers['x-admin-code'] = code;
+  const playerToken = getPlayerToken();
+  if (playerToken) headers.Authorization = `Bearer ${playerToken}`;
 
   let res;
   try {
@@ -42,21 +73,25 @@ async function req(path, { method = 'GET', body } = {}) {
 }
 
 export const api = {
+  authRegister:    (body) => req('/api/auth/register', { method: 'POST', body }),
+  authLogin:       (identifier, password) => req('/api/auth/login', { method: 'POST', body: { identifier, password } }),
+  authMe:          () => req('/api/auth/me'),
+  updateMyProfile: (body) => req('/api/auth/me', { method: 'PATCH', body }),
+
   listPlayers:     () => req('/api/players'),
   createPlayer:    (body) => req('/api/players', { method: 'POST', body }),
   updatePlayer:    (id, body) => req(`/api/players/${id}`, { method: 'PATCH', body }),
   deletePlayer:    (id) => req(`/api/players/${id}`, { method: 'DELETE' }),
   playerProfile:   (id) => req(`/api/players/${id}/profile`),
-  updatePin:       (id, oldPin, newPin) => req(`/api/players/${id}/pin`, { method: 'PATCH', body: { oldPin, newPin } }),
 
   currentMatch:    () => req('/api/match/current'),
   lastMatch:       () => req('/api/match/last'),
 
-  // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'. Ajout du PIN.
-  vote:            (playerId, intent, position = null, pin = null) =>
-    req('/api/vote', { method: 'POST', body: { playerId, intent, position, pin } }),
-  unvote:          (playerId, matchId) =>
-    req('/api/vote', { method: 'DELETE', body: { playerId, matchId } }),
+  // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'.
+  vote:            (intent, position = null) =>
+    req('/api/vote', { method: 'POST', body: { intent, position } }),
+  unvote:          (matchId) =>
+    req('/api/vote', { method: 'DELETE', body: { matchId } }),
   updatePosition:  (playerId, matchId, position) =>
     req('/api/vote/position', { method: 'PATCH', body: { playerId, matchId, position } }),
 
@@ -91,6 +126,10 @@ export const api = {
   listExpenses:    () => req('/api/expenses'),
   addExpense:      (body) => req('/api/expenses', { method: 'POST', body }),
   caisse:          () => req('/api/caisse'),
+  inventory:       () => req('/api/inventory'),
+  addInventoryItem:(body) => req('/api/inventory', { method: 'POST', body }),
+  updateInventoryItem: (id, body) => req(`/api/inventory/${id}`, { method: 'PATCH', body }),
+  deleteInventoryItem: (id) => req(`/api/inventory/${id}`, { method: 'DELETE' }),
 
   // Announcements (lecture publique, écriture admin-only via header)
   listAnnouncements: () => req('/api/announcements'),
@@ -99,9 +138,9 @@ export const api = {
   deleteAnnouncement:(id) => req(`/api/announcements/${id}`, { method: 'DELETE' }),
 
   // Man of the Match
-  motmVote:    (matchId, voterId, votedId) => req('/api/motm/vote', { method: 'POST', body: { matchId, voterId, votedId } }),
+  motmVote:    (matchId, votedId) => req('/api/motm/vote', { method: 'POST', body: { matchId, votedId } }),
   motmResults: (matchId) => req(`/api/motm/${matchId}`),
-  motmMyVote:  (matchId, voterId) => req(`/api/motm/me/${matchId}/${voterId}`),
+  motmMyVote:  (matchId) => req(`/api/motm/me/${matchId}`),
   motmLast:    () => req('/api/motm/last'),
 
   // Consentement RGPD/DSGVO

@@ -4,7 +4,13 @@
 CREATE TABLE IF NOT EXISTS players (
   id          SERIAL PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
-  pin         TEXT NOT NULL,
+  pronoun     TEXT,
+  age         INT CHECK (age IS NULL OR age BETWEEN 10 AND 99),
+  email       TEXT,
+  phone       TEXT,
+  avatar_url  TEXT,
+  password_hash TEXT,
+  pin         TEXT,
   rating      NUMERIC(3,1) NOT NULL DEFAULT 5.0 CHECK (rating >= 1 AND rating <= 10),
   is_admin    BOOLEAN NOT NULL DEFAULT FALSE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -63,6 +69,19 @@ CREATE TABLE IF NOT EXISTS expenses (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id               SERIAL PRIMARY KEY,
+  category         TEXT NOT NULL,
+  name             TEXT NOT NULL,
+  quantity_total   INT NOT NULL DEFAULT 0 CHECK (quantity_total >= 0),
+  quantity_ready   INT NOT NULL DEFAULT 0 CHECK (quantity_ready >= 0 AND quantity_ready <= quantity_total),
+  storage_location TEXT,
+  notes            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category, name)
+);
+
 CREATE TABLE IF NOT EXISTS announcements (
   id          SERIAL PRIMARY KEY,
   title       TEXT,
@@ -94,5 +113,8 @@ CREATE TABLE IF NOT EXISTS consents (
 CREATE INDEX IF NOT EXISTS idx_attendances_match ON attendances(match_id);
 CREATE INDEX IF NOT EXISTS idx_goals_match ON goals(match_id);
 CREATE INDEX IF NOT EXISTS idx_fines_player ON fines(player_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_unique ON players (LOWER(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_players_phone_unique ON players (phone) WHERE phone IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_inventory_items_category_name ON inventory_items(category, name);
 CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(pinned DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_motm_match ON motm_votes(match_id);

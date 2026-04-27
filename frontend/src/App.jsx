@@ -1,6 +1,17 @@
-import { useState, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import logoCamas from './assets/logo-camas.jpeg';
-import { api, getAdminCode, setAdminCode, clearAdminCode } from './api';
+import {
+  api,
+  getAdminCode,
+  setAdminCode,
+  clearAdminCode,
+  getPlayerToken,
+  setPlayerToken,
+  clearPlayerToken,
+  getStoredPlayer,
+  setStoredPlayer,
+  clearStoredPlayer,
+} from './api';
 import { t, LANGS, localeFor } from './i18n';
 import './App.css';
 
@@ -10,33 +21,10 @@ import './App.css';
    ======================================================== */
 
 /* ========================================================
-   PLAYER CARD MODAL (FUT) + CHANGEMENT DE PIN
+   PLAYER CARD MODAL (FUT)
    ======================================================== */
 function PlayerCardModal({ player, onClose }) {
-  const [editPin, setEditPin] = useState(false);
-  const [oldPin, setOldPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [busy, setBusy] = useState(false);
-
   const punct = player.shows ? Math.round(((player.shows - player.lates) / player.shows) * 100) : 0;
-
-  const handleUpdatePin = async (e) => {
-    e.preventDefault();
-    if (oldPin.length !== 4 || newPin.length !== 4) return alert("Les codes doivent faire 4 chiffres.");
-    setBusy(true);
-    try {
-      // Appel à l'API pour changer le PIN
-      await api.updatePin(player.id, oldPin, newPin);
-      alert("✅ Code PIN modifié avec succès !");
-      setEditPin(false);
-      setOldPin('');
-      setNewPin('');
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
@@ -53,30 +41,12 @@ function PlayerCardModal({ player, onClose }) {
           </div>
           <div className="fut-name">{player.name.split(' ')[0].toUpperCase()}</div>
 
-          {/* VUE 2 : LE FORMULAIRE DE CHANGEMENT DE PIN */}
-          {editPin ? (
-            <form className="pin-fut-form" onSubmit={handleUpdatePin}>
-              <p className="pin-fut-title">Modifier mon code secret</p>
-              <input type="password" placeholder="Ancien (ex: 1234)" maxLength="4" inputMode="numeric" value={oldPin} onChange={e => setOldPin(e.target.value)} />
-              <input type="password" placeholder="Nouveau PIN" maxLength="4" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value)} />
-              <div className="row-actions" style={{ marginTop: '10px' }}>
-                <button type="button" className="btn-ghost" onClick={() => setEditPin(false)}>Annuler</button>
-                <button type="submit" className="btn-primary" disabled={busy || oldPin.length < 4 || newPin.length < 4}>Valider</button>
-              </div>
-            </form>
-          ) : (
-            <>
-              <div className="fut-stats-grid">
-                <div className="fut-stat"><span>{player.goals || 0}</span> BUT</div>
-                <div className="fut-stat"><span>{player.assists || 0}</span> PAS</div>
-                <div className="fut-stat"><span>{player.shows || 0}</span> PRS</div>
-                <div className="fut-stat"><span>{punct}%</span> PCT</div>
-              </div>
-              <button className="fut-pin-toggle" onClick={() => setEditPin(true)}>
-                🔒 Modifier mon code PIN
-              </button>
-            </>
-          )}
+          <div className="fut-stats-grid">
+            <div className="fut-stat"><span>{player.goals || 0}</span> BUT</div>
+            <div className="fut-stat"><span>{player.assists || 0}</span> PAS</div>
+            <div className="fut-stat"><span>{player.shows || 0}</span> PRS</div>
+            <div className="fut-stat"><span>{punct}%</span> PCT</div>
+          </div>
 
         </div>
         <button className="btn-close-card" onClick={onClose}>✕</button>
@@ -112,35 +82,99 @@ const fmtShortDate = (iso, lang) => iso
   ? new Date(iso).toLocaleDateString(localeFor(lang), { timeZone: 'Europe/Berlin', day: '2-digit', month: 'short' })
   : '';
 
-// Définir les fonctions de chargement en dehors du composant pour stabilité
-function createLoadHome(setMatch, setAttendees, setPlayers, setLastMatch, setAnnouncements, setMotmLast, setGallery, setMotmResults) {
-  return async function loadHome() {
-    try {
-      const [m, ps, last, anns, ml, gal] = await Promise.all([
-        api.currentMatch(), api.listPlayers(), api.lastMatch(),
-        api.listAnnouncements().catch(() => []),
-        api.motmLast().catch(() => null),
-        api.matchGallery().catch(() => []),
-      ]);
-      setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
-      setAnnouncements(anns); setMotmLast(ml);
-      setGallery(gal);
-      // Load MotM results for current match
-      if (m.match?.id) {
-        try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
-      }
-    } catch (e) { console.warn(e); }
-  };
+const DEFAULT_KICKOFF = '10:00';
+
+function normalizeClockTime(value, fallback = DEFAULT_KICKOFF) {
+  if (typeof value !== 'string') return fallback;
+  const match = value.match(/^(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : fallback;
 }
 
-function createLoadTeams(match, setTeams, setMatchGoals) {
-  return async function loadTeams() {
-    if (!match) return;
-    try {
-      const [t, g] = await Promise.all([api.teams(match.id), api.matchGoals(match.id)]);
-      setTeams(t); setMatchGoals(g);
-    } catch (e) { console.warn(e); }
-  };
+function shiftClockTime(value, offsetMinutes) {
+  const [hours, minutes] = normalizeClockTime(value).split(':').map(Number);
+  const totalMinutes = (hours * 60) + minutes + offsetMinutes;
+  const wrapped = ((totalMinutes % 1440) + 1440) % 1440;
+  const nextHours = String(Math.floor(wrapped / 60)).padStart(2, '0');
+  const nextMinutes = String(wrapped % 60).padStart(2, '0');
+  return `${nextHours}:${nextMinutes}`;
+}
+
+function replaceTimeToken(text, nextTime) {
+  return typeof text === 'string' ? text.replace(/\b\d{2}(?:h|:)\d{2}\b/, nextTime) : text;
+}
+
+function formatShareTime(value, lang) {
+  const normalized = normalizeClockTime(value);
+  return lang === 'fr' ? normalized.replace(':', 'h') : normalized;
+}
+
+function initialsFromName(value = '') {
+  const parts = value.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  if (!parts.length) return 'CM';
+  return parts.map((part) => part[0]?.toUpperCase() || '').join('');
+}
+
+function buildProfileAvatar(name = '') {
+  const initials = initialsFromName(name);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="${initials}">
+      <defs>
+        <linearGradient id="avatarGradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#126746" />
+          <stop offset="100%" stop-color="#e7ba3a" />
+        </linearGradient>
+      </defs>
+      <rect width="96" height="96" rx="28" fill="url(#avatarGradient)" />
+      <circle cx="48" cy="48" r="30" fill="rgba(255,255,255,0.14)" />
+      <text x="50%" y="55%" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#ffffff">${initials}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function loadImageFromDataUrl(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('avatar-load-failed'));
+    image.src = src;
+  });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('avatar-read-failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressAvatarFile(file, messages) {
+  if (!file) return null;
+  if (!file.type.startsWith('image/')) {
+    throw new Error(messages.invalidType);
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error(messages.tooLarge);
+  }
+
+  try {
+    const source = await readFileAsDataUrl(file);
+    const image = await loadImageFromDataUrl(source);
+    const side = Math.min(image.width, image.height);
+    const offsetX = (image.width - side) / 2;
+    const offsetY = (image.height - side) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 320;
+
+    const context = canvas.getContext('2d');
+    context.drawImage(image, offsetX, offsetY, side, side, 0, 0, 320, 320);
+    return canvas.toDataURL('image/jpeg', 0.86);
+  } catch {
+    throw new Error(messages.processing);
+  }
 }
 
 export default function App() {
@@ -159,6 +193,8 @@ export default function App() {
     try { return localStorage.getItem(LANG_KEY) || 'fr'; } catch { return 'fr'; }
   });
   const [isAdmin, setIsAdmin] = useState(() => !!getAdminCode());
+  const [currentUser, setCurrentUser] = useState(() => getStoredPlayer());
+  const [authChecked, setAuthChecked] = useState(() => !getPlayerToken());
   const [adminModalOpen, setAdminModalOpen] = useState(false);
 
   const [tab, setTab] = useState('home');
@@ -179,6 +215,7 @@ export default function App() {
   const [gallery, setGallery] = useState([]);
   // Calendrier des matchs programmés (admin uniquement)
   const [calendar, setCalendar] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [legal, setLegal] = useState(null);            // 'impressum' | 'privacy' | null
   const [cookieAck, setCookieAck] = useState(() => {
     try { return localStorage.getItem('camas_cookie_ack') === '1'; } catch { return true; }
@@ -192,6 +229,9 @@ export default function App() {
   // Ouvre la carte joueur (définie inline dans le rendu)
 
   const tr = useCallback((key, vars) => t(lang, key, vars), [lang]);
+  const profileAvatarSrc = currentUser
+    ? (currentUser.avatarUrl || buildProfileAvatar(currentUser.name))
+    : logoCamas;
 
   const switchLang = (code) => {
     setLang(code);
@@ -226,47 +266,129 @@ export default function App() {
     flash(tr('admin_logout'), 'ok');
   };
 
+  const openAccountPage = (messageKey = 'auth_required') => {
+    if (messageKey === 'auth_go_home_prompt') {
+      setTab('home');
+      flash(tr(messageKey), 'warn');
+      return;
+    }
+    setTab('account');
+    if (messageKey) flash(tr(messageKey), 'warn');
+  };
+
+  const onPlayerLogout = () => {
+    clearPlayerToken();
+    clearStoredPlayer();
+    setCurrentUser(null);
+    if (tab === 'account') setTab('home');
+    flash(tr('auth_logout'), 'ok');
+  };
+
   const acceptCookies = () => {
     try { localStorage.setItem('camas_cookie_ack', '1'); } catch { /* ignore */ }
     setCookieAck(true);
     api.recordConsent('cookies', true).catch(() => { /* best effort */ });
   };
 
-  const loadHome = createLoadHome(setMatch, setAttendees, setPlayers, setLastMatch, setAnnouncements, setMotmLast, setGallery, setMotmResults);
+  const loadHome = async () => {
+    try {
+      const [m, ps, last, anns, ml, gal] = await Promise.all([
+        api.currentMatch(), api.listPlayers(), api.lastMatch(),
+        api.listAnnouncements().catch(() => []),
+        api.motmLast().catch(() => null),
+        api.matchGallery().catch(() => []),
+      ]);
+      setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
+      setAnnouncements(anns); setMotmLast(ml);
+      setGallery(gal);
+      if (m.match?.id) {
+        try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
+      } else {
+        setMotmResults([]);
+      }
+    } catch (e) { console.warn(e); }
+  };
 
-  const loadAdmin = useCallback(async () => {
+  const loadAdmin = async () => {
     if (!isAdmin) return;
     try {
-      const [f, c, a, cal] = await Promise.all([
+      const [f, c, a, cal, inv] = await Promise.all([
         api.fines(), api.caisse(),
         api.listAnnouncements().catch(() => []),
         api.matchCalendar().catch(() => []),
+        api.inventory().catch(() => []),
       ]);
-      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal);
+      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal); setInventory(inv);
     } catch (e) { console.warn(e); }
-  }, [isAdmin]);
+  };
 
-  const loadTeams = createLoadTeams(match, setTeams, setMatchGoals);
+  const loadTeams = async (matchId = match?.id) => {
+    if (!matchId) return;
+    try {
+      const [t, g] = await Promise.all([api.teams(matchId), api.matchGoals(matchId)]);
+      setTeams(t); setMatchGoals(g);
+    } catch (e) { console.warn(e); }
+  };
 
-  const loadStats = useCallback(async () => {
-    const [s, a] = await Promise.all([api.scorers(), api.attendanceStats()]);
-    setScorers(s); setAttStats(a);
+  const loadStats = async () => {
+    try {
+      const [s, a] = await Promise.all([api.scorers(), api.attendanceStats()]);
+      setScorers(s); setAttStats(a);
+    } catch (e) { console.warn(e); }
+  };
+
+  const loadHomeRef = useRef(loadHome);
+  const loadStatsRef = useRef(loadStats);
+  const loadTeamsRef = useRef(loadTeams);
+  const loadAdminRef = useRef(loadAdmin);
+
+  useEffect(() => {
+    loadHomeRef.current = loadHome;
+    loadStatsRef.current = loadStats;
+    loadTeamsRef.current = loadTeams;
+    loadAdminRef.current = loadAdmin;
+  });
+
+  const finishPlayerSession = async (session, successKey, nextTab = 'home') => {
+    setPlayerToken(session.token);
+    setStoredPlayer(session.user);
+    setCurrentUser(session.user);
+    await Promise.all([loadHome(), loadStats()]);
+    setTab(nextTab);
+    flash(tr(successKey), 'ok');
+  };
+
+  useEffect(() => {
+    const token = getPlayerToken();
+    if (!token) return;
+
+    api.authMe()
+      .then(({ user }) => {
+        setCurrentUser(user);
+        setStoredPlayer(user);
+      })
+      .catch(() => {
+        clearPlayerToken();
+        clearStoredPlayer();
+        setCurrentUser(null);
+      })
+      .finally(() => setAuthChecked(true));
   }, []);
 
-  useLayoutEffect(() => {
-    Promise.resolve().then(() => {
-      loadHome();
-      loadStats();
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadHomeRef.current();
+      void loadStatsRef.current();
     });
-  }, [loadHome, loadStats]);
+  }, []);
 
-  useLayoutEffect(() => {
-    Promise.resolve().then(() => {
-      if (tab === 'teams') loadTeams();
-      else if (tab === 'stats') loadStats();
-      else if (tab === 'admin' && isAdmin) loadAdmin();
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (tab === 'teams') void loadTeamsRef.current(match?.id);
+      else if (tab === 'stats') void loadStatsRef.current();
+      else if (tab === 'admin' && isAdmin) void loadAdminRef.current();
     });
-  }, [tab, loadTeams, loadStats, loadAdmin, isAdmin]);
+  }, [tab, isAdmin, match?.id]);
 
   useEffect(() => {
     const h = (e) => { e.preventDefault(); setInstallEvt(e); };
@@ -321,6 +443,16 @@ export default function App() {
               ))}
             </div>
 
+            <button className={`account-chip ${tab === 'account' ? 'active' : ''}`} onClick={() => setTab('account')}>
+              <span className="account-chip-avatar-shell">
+                <img className="account-chip-avatar" src={profileAvatarSrc} alt={tr('auth_profile')} />
+              </span>
+              <span className="account-chip-copy">
+                <span className="account-chip-label">{tr('auth_profile')}</span>
+                <strong>{currentUser ? currentUser.name.split(' ')[0] : tr('auth_account_cta')}</strong>
+              </span>
+            </button>
+
             {installEvt && (
               <button className="btn-install" onClick={async () => { installEvt.prompt(); await installEvt.userChoice; setInstallEvt(null); }}>
                 {tr('install_btn')}
@@ -335,38 +467,60 @@ export default function App() {
           {tab === 'home' && (
             <HomePage
               tr={tr} lang={lang}
+              currentUser={currentUser}
               match={match} attendees={attendees} players={players} scorers={scorers} attStats={attStats} setSelectedPlayerCard={setSelectedPlayerCard} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
-              onConfirm={async (pid, intent, position, pin) => {
+              onRequireAuth={openAccountPage}
+              onConfirm={async (intent, position) => {
                 try {
-                  // On passe le PIN à l'API
-                  const r = await api.vote(pid, intent, position, pin);
+                  const r = await api.vote(intent, position);
                   if (intent === 'yes') flash(r.late ? tr('presence_late') : tr('presence_ok'), r.late ? 'warn' : 'ok');
                   else if (intent === 'maybe') flash(tr('maybe_ok'), 'warn');
                   else flash(tr('absent_ok'), 'err');
                   loadHome();
                 } catch (e) { flash(e.message, 'err'); }
               }}
-              onUnvote={async (pid) => {
-                try { await api.unvote(pid, match.id); flash(tr('presence_cancel')); loadHome(); }
+              onUnvote={async () => {
+                try { await api.unvote(match.id); flash(tr('presence_cancel')); loadHome(); }
                 catch (e) { flash(e.message, 'err'); }
               }}
-              onCreatePlayer={async (name, rating) => {
-                try { const p = await api.createPlayer({ name, rating }); await loadHome(); flash(tr('player_added', { name: p.name })); return p; }
-                catch (e) { flash(e.message, 'err'); throw e; }
-              }}
               onMotmVote={async (voterId, votedId) => {
-                try { await api.motmVote(match.id, voterId, votedId); flash(tr('motm_recorded'), 'ok'); const r = await api.motmResults(match.id); setMotmResults(r); }
+                try { await api.motmVote(match.id, votedId); flash(tr('motm_recorded'), 'ok'); const r = await api.motmResults(match.id); setMotmResults(r); }
                 catch (e) { flash(e.message, 'err'); }
               }}
             />
           )}
 
-          {tab === 'players' && <PlayersPage tr={tr} isAdmin={isAdmin} players={players} attendees={attendees} onReload={loadHome} flash={flash} />}
+          {tab === 'players' && <PlayersPage tr={tr} isAdmin={isAdmin} currentUser={currentUser} players={players} attendees={attendees} onReload={loadHome} flash={flash} onRequireAuth={openAccountPage} />}
+
+          {tab === 'account' && (
+            <AccountPage
+              tr={tr}
+              currentUser={currentUser}
+              authChecked={authChecked}
+              onRegister={async (payload) => {
+                const session = await api.authRegister(payload);
+                await finishPlayerSession(session, 'auth_register_photo_prompt', 'account');
+              }}
+              onLogin={async (identifier, password) => {
+                const session = await api.authLogin(identifier, password);
+                await finishPlayerSession(session, 'auth_login_ok');
+              }}
+              onUpdateProfile={async (payload) => {
+                const { user } = await api.updateMyProfile(payload);
+                setStoredPlayer(user);
+                setCurrentUser(user);
+                flash(tr('auth_profile_saved'), 'ok');
+                return user;
+              }}
+              onLogout={onPlayerLogout}
+              onGoHome={() => setTab('home')}
+            />
+          )}
 
           {tab === 'teams' && (
             <StadiumPage
-              tr={tr} isAdmin={isAdmin}
+              tr={tr} lang={lang} isAdmin={isAdmin}
               teams={teams} match={match} goals={matchGoals} attendees={attendees}
               onReload={loadTeams}
               onSetPosition={async (playerId, position) => {
@@ -384,7 +538,7 @@ export default function App() {
                 tr={tr} lang={lang}
                 announcements={announcements} fines={fines} caisse={caisse}
                 players={players} match={match} motmResults={motmResults}
-                teams={teams} matchGoals={matchGoals} calendar={calendar}
+                teams={teams} matchGoals={matchGoals} calendar={calendar} inventory={inventory}
                 onLogout={onAdminLogout}
                 onAddAnnouncement={async (body, title, pinned) => {
                   try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash(tr('ann_published'), 'ok'); }
@@ -423,6 +577,19 @@ export default function App() {
                   try { await api.deleteMatch(id); await loadAdmin(); }
                   catch (e) { flash(e.message, 'err'); }
                 }}
+                onAddInventoryItem={async (body) => {
+                  try { await api.addInventoryItem(body); await loadAdmin(); flash(tr('inventory_added'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); throw e; }
+                }}
+                onUpdateInventoryItem={async (id, body) => {
+                  try { await api.updateInventoryItem(id, body); await loadAdmin(); flash(tr('inventory_updated'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); throw e; }
+                }}
+                onDeleteInventoryItem={async (id) => {
+                  if (!confirm(tr('inventory_delete_confirm'))) return;
+                  try { await api.deleteInventoryItem(id); await loadAdmin(); flash(tr('inventory_deleted'), 'ok'); }
+                  catch (e) { flash(e.message, 'err'); }
+                }}
                 onUpdateMatch={onUpdateMatch}
               />
             ) : (
@@ -430,8 +597,8 @@ export default function App() {
             )
           )}
 
-          {/* SECTIONS PUBLIQUES — annonces + galerie vainqueurs (visibles sur l'accueil ET tous les onglets, juste avant le footer) */}
-          {tab !== 'admin' && (
+          {/* SECTIONS PUBLIQUES — réservées à l'accueil */}
+          {tab === 'home' && (
             <>
               <PublicAnnouncementsSection tr={tr} lang={lang} announcements={announcements} />
               <WinningGallerySection tr={tr} lang={lang} gallery={gallery} />
@@ -572,18 +739,329 @@ function LockedSection({ tr, onUnlock }) {
   );
 }
 
+function AccountAvatarField({ tr, previewSrc, hint, busy, onChange }) {
+  return (
+    <div className="account-avatar-field">
+      <div className="account-avatar-copy">
+        <span className="account-shell-kicker">{tr('auth_avatar')}</span>
+        <p>{hint}</p>
+      </div>
+      <div className="account-avatar-row">
+        <img className="account-avatar-preview" src={previewSrc} alt={tr('auth_profile')} />
+        <label className={`account-avatar-picker ${busy ? 'busy' : ''}`}>
+          <input className="account-avatar-input" type="file" accept="image/*" onChange={onChange} disabled={busy} />
+          <span>{busy ? tr('auth_avatar_uploading') : tr('auth_avatar_pick')}</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpdateProfile, onLogout, onGoHome }) {
+  const [authMode, setAuthMode] = useState('login');
+  const [name, setName] = useState('');
+  const [pronoun, setPronoun] = useState('');
+  const [age, setAge] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const visualTitle = currentUser ? tr('auth_connected_title') : tr('auth_visual_title');
+  const visualCopy = currentUser ? tr('auth_connected_sub') : tr('auth_visual_sub');
+  const isRegisterMode = authMode === 'register';
+  const avatarMessages = {
+    invalidType: tr('auth_avatar_invalid'),
+    tooLarge: tr('auth_avatar_too_large'),
+    processing: tr('auth_avatar_processing_err'),
+  };
+  const connectedPreview = currentUser?.avatarUrl || buildProfileAvatar(currentUser?.name || '');
+
+  const updateConnectedAvatar = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setAvatarBusy(true);
+    setFeedback('');
+    try {
+      const nextAvatarUrl = await compressAvatarFile(file, avatarMessages);
+      await onUpdateProfile({ avatarUrl: nextAvatarUrl });
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const submitRegister = async (e) => {
+    e.preventDefault();
+    setRegisterBusy(true);
+    setFeedback('');
+    try {
+      await onRegister({ name, pronoun, age, email, phone, password, passwordConfirm });
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setRegisterBusy(false);
+    }
+  };
+
+  const submitLogin = async (e) => {
+    e.preventDefault();
+    setLoginBusy(true);
+    setFeedback('');
+    try {
+      await onLogin(identifier, loginPassword);
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  if (!authChecked && !currentUser) {
+    return (
+      <section className="panel account-page">
+        <div className="account-stage">
+          <aside className="account-visual">
+            <div className="account-visual-content">
+              <span className="account-kicker">CAMAS e.V.</span>
+              <h2>{visualTitle}</h2>
+              <p>{visualCopy}</p>
+            </div>
+          </aside>
+          <div className="account-shell">
+            <div className="panel-head"><h2>{tr('auth_account')}</h2></div>
+            <p className="empty-row">{tr('loading')}</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (currentUser) {
+    return (
+      <section className="panel account-page account-page-connected">
+        <div className="account-stage">
+          <aside className="account-visual">
+            <div className="account-visual-content">
+              <span className="account-kicker">CAMAS e.V.</span>
+              <h2>{visualTitle}</h2>
+              <p>{visualCopy}</p>
+              <div className="account-visual-pills">
+                <span>{tr('auth_visual_fast')}</span>
+                <span>{tr('auth_visual_presence')}</span>
+                <span>{tr('auth_visual_motm')}</span>
+              </div>
+            </div>
+          </aside>
+          <div className="account-shell">
+            <div className="account-shell-header">
+              <span className="account-shell-kicker">{tr('auth_account')}</span>
+              <h3>{tr('auth_connected_as')} {currentUser.name}</h3>
+              <p>{tr('auth_home_ready')}</p>
+            </div>
+            {feedback ? <p className="auth-feedback">{feedback}</p> : null}
+            <AccountAvatarField
+              tr={tr}
+              previewSrc={connectedPreview}
+              hint={tr('auth_avatar_connected_intro')}
+              busy={avatarBusy}
+              onChange={updateConnectedAvatar}
+            />
+            <div className="account-summary-grid">
+              <div className="overview-chip"><strong>{currentUser.pronoun || '—'}</strong><span>{tr('auth_pronoun')}</span></div>
+              <div className="overview-chip"><strong>{currentUser.age || '—'}</strong><span>{tr('auth_age')}</span></div>
+              <div className="overview-chip"><strong>{currentUser.email || '—'}</strong><span>{tr('auth_email')}</span></div>
+              <div className="overview-chip"><strong>{currentUser.phone || '—'}</strong><span>{tr('auth_phone')}</span></div>
+            </div>
+            <div className="account-actions-card">
+              <p>{tr('auth_connected_sub')}</p>
+              <div className="row-actions">
+                <button type="button" className="btn-ghost" onClick={onGoHome}>{tr('auth_go_home')}</button>
+                <button type="button" className="btn-primary" onClick={onLogout}>{tr('auth_logout')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel account-page">
+      <div className="account-stage">
+        <aside className="account-visual">
+          <div className="account-visual-content">
+            <span className="account-kicker">CAMAS e.V.</span>
+            <h2>{visualTitle}</h2>
+            <p>{visualCopy}</p>
+            <div className="account-visual-pills">
+              <span>{tr('auth_visual_fast')}</span>
+              <span>{tr('auth_visual_presence')}</span>
+              <span>{tr('auth_visual_motm')}</span>
+            </div>
+          </div>
+        </aside>
+
+        <div className="account-shell">
+          <div className="account-shell-header">
+            <span className="account-shell-kicker">{tr('auth_account')}</span>
+            <h3>{tr('auth_account_title')}</h3>
+            <p>{tr('auth_account_intro')}</p>
+          </div>
+          {feedback ? <p className="auth-feedback">{feedback}</p> : null}
+          <div className="account-mode-strip" role="tablist" aria-label={tr('auth_account')}>
+            <button type="button" className={`account-mode-tab ${!isRegisterMode ? 'active' : ''}`} onClick={() => setAuthMode('login')}>
+              {tr('auth_login_title')}
+            </button>
+            <button type="button" className={`account-mode-tab ${isRegisterMode ? 'active' : ''}`} onClick={() => setAuthMode('register')}>
+              {tr('auth_register_title')}
+            </button>
+          </div>
+          <div className="account-grid account-grid-single">
+            {isRegisterMode ? (
+              <form className="account-card account-card-register" onSubmit={submitRegister}>
+                <div className="account-card-head">
+                  <h3>{tr('auth_register_title')}</h3>
+                  <p>{tr('auth_register_intro')}</p>
+                </div>
+                <div className="account-form-grid">
+                  <div>
+                    <label>{tr('auth_name')}</label>
+                    <input value={name} onChange={e => setName(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_pronoun')}</label>
+                    <input value={pronoun} onChange={e => setPronoun(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_age')}</label>
+                    <input type="number" min="10" max="99" value={age} onChange={e => setAge(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_phone')}</label>
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required />
+                  </div>
+                  <div className="account-form-span-2">
+                    <label>{tr('auth_email')}</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_password')}</label>
+                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} minLength="8" required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_password_confirm')}</label>
+                    <input type="password" value={passwordConfirm} onChange={e => setPasswordConfirm(e.target.value)} minLength="8" required />
+                  </div>
+                </div>
+                <button type="submit" className="btn-primary account-submit" disabled={registerBusy}>{registerBusy ? '…' : tr('auth_register_submit')}</button>
+                <div className="account-switch-row">
+                  <span>{tr('auth_switch_login_prompt')}</span>
+                  <button type="button" className="account-switch-link" onClick={() => setAuthMode('login')}>
+                    {tr('auth_switch_login')}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="account-card account-card-login" onSubmit={submitLogin}>
+                <div className="account-card-head">
+                  <h3>{tr('auth_login_title')}</h3>
+                  <p>{tr('auth_login_intro')}</p>
+                </div>
+                <label>{tr('auth_identifier')}</label>
+                <input value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder={tr('auth_identifier_ph')} required />
+                <label>{tr('auth_password')}</label>
+                <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
+                <button type="submit" className="btn-primary account-submit" disabled={loginBusy}>{loginBusy ? '…' : tr('auth_login_submit')}</button>
+                <div className="account-switch-row">
+                  <span>{tr('auth_switch_register_prompt')}</span>
+                  <button type="button" className="account-switch-link" onClick={() => setAuthMode('register')}>
+                    {tr('auth_switch_register')}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
+  const [position, setPosition] = useState(null);
+
+  return (
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="sheet small" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-head">
+          <h3>{tr('confirm_presence')}</h3>
+          <button className="ghost-btn" onClick={onClose}>✕</button>
+        </div>
+        <p className="pp-intro">{tr('auth_presence_intro', { name: currentUser?.name || '' })}</p>
+        <div className="position-picker compact">
+          <div className="position-grid">
+            {POSITIONS.map(option => (
+              <button
+                key={option.code}
+                type="button"
+                className={`pos-card pos-card-${option.code} ${position === option.code ? 'selected' : ''}`}
+                onClick={() => setPosition(option.code)}
+              >
+                <span className="pos-code">{option.code}</span>
+                <span className="pos-name">{tr(option.key)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="row-actions">
+          <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
+          <button type="button" className="btn-primary" disabled={!position} onClick={() => onSubmit(position)}>{tr('confirm_presence')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onConfirm, onUnvote, onCreatePlayer, onMotmVote }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
+function HomePage({ tr, lang, currentUser, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onRequireAuth, onConfirm, onUnvote, onMotmVote }) {
+  const [presenceOpen, setPresenceOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
   // Toujours 11 vs 11 — la logique de format auto a été retirée à la demande.
   const fmt = { type: tr('stadium'), format: '11 vs 11' };
 
-  const yesCount = attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent').length;
+  const confirmedAttendees = attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent');
+  const yesCount = confirmedAttendees.length;
   const maybeCount = attendees.filter(a => a.status === 'maybe').length;
+  const kickoffTime = normalizeClockTime(match?.kickoff_local);
+  const meetingTime = shiftClockTime(kickoffTime, -15);
+  const lateFineHint = replaceTimeToken(tr('late_fine_sub'), kickoffTime);
+  const matchNote = match?.notes?.trim();
+
+  const handleIntent = async (intent) => {
+    if (!currentUser) {
+      onRequireAuth();
+      return;
+    }
+    if (intent === 'yes') {
+      setPresenceOpen(true);
+      return;
+    }
+    await onConfirm(intent, null);
+  };
 
   const statusPill = (a) => {
     if (a.status === 'maybe') return <span className="badge badge-yellow">{tr('status_maybe')}</span>;
@@ -598,9 +1076,12 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
 
       {/* Vote « Joueur du jour » — visible quand un match est en cours */}
       <MotMSection
+        key={`${match?.id || 'no-match'}-${currentUser?.id || 'guest'}`}
         tr={tr} lang={lang}
+        currentUser={currentUser}
         match={match} attendees={attendees} players={players}
         results={motmResults} lastWinner={motmLast}
+        onRequireAuth={onRequireAuth}
         onVote={onMotmVote}
       />
       {/* Note: annonces et galerie sont rendues juste avant le footer (cf. App) */}
@@ -626,10 +1107,10 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
               </tr>
             </thead>
             <tbody>
-              {attendees.length === 0 && (
+              {confirmedAttendees.length === 0 && (
                 <tr><td colSpan="5" className="empty-row">{tr('no_attendance')}</td></tr>
               )}
-              {attendees.map(a => (
+              {confirmedAttendees.map(a => (
                 <tr key={a.id}>
                   <td onClick={() => {
                     const stats = scorers.find(s => s.id === a.player_id || s.id === a.id) || {};
@@ -645,7 +1126,7 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
                   </td>
                   <td>{statusPill(a)}</td>
                   <td className="time-cell">{fmtTime(a.vote_time, lang)}</td>
-                  <td><button className="row-x" onClick={() => onUnvote(a.player_id)} title={tr('cancel')}>✕</button></td>
+                  <td>{currentUser?.id === a.player_id ? <button className="row-x" onClick={() => onUnvote()} title={tr('cancel')}>✕</button> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -657,23 +1138,24 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
             <h2>{tr('next_match')}</h2>
             <span className="panel-ic">⏱️</span>
           </div>
-          <p className="kickoff">{tr('kickoff')} <strong>10:00</strong> · {match ? fmtDate(match.match_date, lang) : '…'}</p>
+          <p className="kickoff">{tr('kickoff')} <strong>{kickoffTime}</strong> · {match ? fmtDate(match.match_date, lang) : '…'}</p>
+          {matchNote && <p className="match-note">{matchNote}</p>}
 
           <div className="info-box info-yellow">
-            <p>{tr('meeting_at')} : <strong>09:45</strong></p>
+            <p>{tr('meeting_at')} : <strong>{meetingTime}</strong></p>
             <p className="sub">{tr('meeting_sub')}</p>
           </div>
 
           <div className="intent-grid">
-            <button className="intent-btn intent-yes" onClick={() => setPickerOpen('yes')}>
+            <button className="intent-btn intent-yes" onClick={() => handleIntent('yes')}>
               <span className="intent-emoji">⚽</span>
               <span className="intent-lbl">{tr('vote_yes')}</span>
             </button>
-            <button className="intent-btn intent-maybe" onClick={() => setPickerOpen('maybe')}>
+            <button className="intent-btn intent-maybe" onClick={() => handleIntent('maybe')}>
               <span className="intent-emoji">🤔</span>
               <span className="intent-lbl">{tr('vote_maybe')}</span>
             </button>
-            <button className="intent-btn intent-no" onClick={() => setPickerOpen('no')}>
+            <button className="intent-btn intent-no" onClick={() => handleIntent('no')}>
               <span className="intent-emoji">❌</span>
               <span className="intent-lbl">{tr('vote_no')}</span>
             </button>
@@ -687,7 +1169,7 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
 
           <div className="info-box info-red">
             <p>{tr('late_fine')} : <strong>2€</strong></p>
-            <p className="sub">{tr('late_fine_sub')}</p>
+            <p className="sub">{lateFineHint}</p>
             <span className="fine-ic">🧾</span>
           </div>
         </section>
@@ -742,15 +1224,15 @@ function HomePage({ tr, lang, match, attendees, players, scorers, attStats, setS
         </section>
       </div>
 
-      {pickerOpen && (
-        <PlayerPicker
+      {presenceOpen && currentUser && (
+        <PresenceChoiceModal
           tr={tr}
-          intent={pickerOpen}
-          players={players}
-          attendees={attendees}
-          onConfirm={async (pid, intent, position, pin) => { await onConfirm(pid, intent, position, pin); setPickerOpen(false); }}
-          onCreate={async (name, rating) => await onCreatePlayer(name, rating)}
-          onClose={() => setPickerOpen(false)}
+          currentUser={currentUser}
+          onSubmit={async (position) => {
+            await onConfirm('yes', position);
+            setPresenceOpen(false);
+          }}
+          onClose={() => setPresenceOpen(false)}
         />
       )}
     </>
@@ -787,141 +1269,59 @@ function LastMatchCard({ tr, lang, lastMatch }) {
   );
 }
 
-/* ========================================================
-   PLAYER PICKER (intent-aware)
-   ======================================================== */
-
-/* ========================================================
-   PLAYER PICKER (SÉCURISÉ AVEC CODE PIN)
-   ======================================================== */
-function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCreate }) {
-  const [search, setSearch] = useState('');
+function AttendanceChangeModal({ tr, attendance, onClose, onSubmit }) {
+  const [intent, setIntent] = useState(attendance.status === 'absent' ? 'no' : 'maybe');
+  const [position, setPosition] = useState(attendance.position || null);
   const needsPosition = intent === 'yes';
-  const [mode, setMode] = useState('pick'); // pick | new | position | pin
-  const [selected, setSelected] = useState(null);
-  const [newName, setNewName] = useState('');
-  const [position, setPosition] = useState(null);
-  const [pin, setPin] = useState(''); // Le code secret saisi pour valider la présence
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    try {
-      const p = await onCreate(newName.trim(), 5);
-      setSelected(p);
-      setMode('pin');
-    } catch { /* silent */ }
-  };
-
-  const voted = new Set(attendees.map(a => a.player_id));
-  const filtered = useMemo(() => players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())), [players, search]);
-
-  const choosePlayer = (p) => {
-    setSelected(p);
-    setMode('pin');
-  };
-
-  const headTitle =
-    mode === 'pick'      ? tr('who_confirms') :
-    mode === 'new'       ? tr('new_player')   :
-    mode === 'position'  ? tr('pick_position', { name: selected?.name || '' }) :
-    mode === 'pin'       ? tr('pin_title') :
-    '';
-
-  const intentBadgeClass = intent === 'yes' ? 'intent-badge-yes' : intent === 'maybe' ? 'intent-badge-maybe' : intent === 'changepin' ? 'intent-badge-pin' : 'intent-badge-no';
-  const intentBadgeLbl = intent === 'yes' ? `⚽ ${tr('vote_yes')}` : intent === 'maybe' ? `🤔 ${tr('vote_maybe')}` : `❌ ${tr('vote_no')}`;
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet" onClick={e => e.stopPropagation()}>
+      <div className="sheet small choice-sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-head">
-          <h3>{headTitle}</h3>
+          <h3>{tr('player_change_choice')}</h3>
           <button className="ghost-btn" onClick={onClose}>✕</button>
         </div>
-        <div className={`intent-badge ${intentBadgeClass}`}>{intentBadgeLbl}</div>
-
-        {mode === 'pick' && (
-          <>
-            <input className="search" placeholder={tr('search_placeholder')} value={search} onChange={e => setSearch(e.target.value)} autoFocus />
-            <div className="player-grid">
-              {filtered.map(p => {
-                // En flux changepin, on N'EXCLUT PAS les joueurs déjà inscrits (un joueur peut toujours modifier son PIN).
-                const blocked = !needsPosition && voted.has(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    className={`player-tile ${blocked ? 'disabled' : ''}`}
-                    disabled={blocked}
-                    onClick={() => choosePlayer(p)}
-                  >
-                    <div className="tile-avatar">{p.name.slice(0, 1).toUpperCase()}</div>
-                    <span>{p.name}</span>
-                    {!needsPosition && voted.has(p.id) && <span className="mini-tag">✓</span>}
-                  </button>
-                );
-              })}
-              {!needsPosition && (
-                <button className="player-tile add" onClick={() => setMode('new')}>
-                  <div className="tile-avatar plus">+</div>
-                  <span>{tr('new_player')}</span>
-                </button>
-              )}
-            </div>
-          </>
-        )}
-
-        {mode === 'new' && (
-          <form className="new-form" onSubmit={submit}>
-            <label>{tr('full_name')}</label>
-            <input value={newName} onChange={e => setNewName(e.target.value)} autoFocus placeholder="Ex: Samuel Djommou" />
-            <div className="row-actions">
-              <button type="button" className="btn-ghost" onClick={() => setMode('pick')}>{tr('back')}</button>
-              <button type="submit" className="btn-primary">{tr('next')}</button>
-            </div>
-          </form>
-        )}
-
-        {mode === 'position' && selected && (
-          <div className="position-picker">
-            <p className="pp-intro">{tr('position_intro')}</p>
-            <div className="position-grid">
-              {POSITIONS.map(p => (
-                <button key={p.code} type="button" className={`pos-card pos-card-${p.code} ${position === p.code ? 'selected' : ''}`} onClick={() => setPosition(p.code)}>
-                  <span className="pos-code">{p.code}</span><span className="pos-name">{tr(p.key)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="row-actions">
-              <button className="btn-ghost" onClick={() => setMode('pick')}>{tr('back')}</button>
-              <button className="btn-primary" disabled={!position} onClick={() => setMode('pin')}>{tr('next')}</button>
-            </div>
+        <div className="choice-sheet-body">
+          <p className="pp-intro">{tr('player_change_intro', { name: attendance.name })}</p>
+          <div className="choice-switch">
+            <button type="button" className={`choice-switch-btn ${intent === 'yes' ? 'active yes' : ''}`} onClick={() => setIntent('yes')}>{tr('vote_yes')}</button>
+            <button type="button" className={`choice-switch-btn ${intent === 'maybe' ? 'active maybe' : ''}`} onClick={() => setIntent('maybe')}>{tr('vote_maybe')}</button>
+            <button type="button" className={`choice-switch-btn ${intent === 'no' ? 'active no' : ''}`} onClick={() => setIntent('no')}>{tr('vote_no')}</button>
           </div>
-        )}
 
-        {/* ÉTAPE : LE CODE PIN — validation de présence */}
-        {mode === 'pin' && selected && (
-          <form className="new-form" onSubmit={(e) => { e.preventDefault(); onConfirm(selected.id, intent, position, pin); }}>
-            <p className="pp-intro">{tr('pin_intro')}</p>
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength="4"
-              placeholder="••••"
-              value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-              autoFocus
-              className="pin-input"
-            />
+          {needsPosition && (
+            <div className="position-picker compact">
+              <div className="position-grid">
+                {POSITIONS.map(option => (
+                  <button
+                    key={option.code}
+                    type="button"
+                    className={`pos-card pos-card-${option.code} ${position === option.code ? 'selected' : ''}`}
+                    onClick={() => setPosition(option.code)}
+                  >
+                    <span className="pos-code">{option.code}</span>
+                    <span className="pos-name">{tr(option.key)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <form className="new-form" onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await onSubmit(intent, position);
+            } catch {
+              // The parent already surfaced the error through flash.
+            }
+          }}>
             <div className="row-actions">
-              <button type="button" className="btn-ghost" onClick={() => needsPosition ? setMode('position') : setMode('pick')}>{tr('back')}</button>
-              <button type="submit" className="btn-primary" disabled={pin.length < 4}>{tr('pin_validate')}</button>
+              <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
+              <button type="submit" className="btn-primary" disabled={needsPosition && !position}>{tr('player_change_save')}</button>
             </div>
           </form>
-        )}
-
-        {/* ÉTAPE : CHANGEMENT DE CODE PIN — accessible depuis flux dédié OU étape pin */}
-        {/* Bloc supprimé : mode === 'changepin' && selected && ... */}
+        </div>
       </div>
     </div>
   );
@@ -930,11 +1330,16 @@ function PlayerPicker({ tr, intent, players, attendees, onConfirm, onClose, onCr
 /* ========================================================
    PLAYERS PAGE
    ======================================================== */
-function PlayersPage({ tr, isAdmin, players, attendees, onReload, flash }) {
+function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, flash, onRequireAuth }) {
   const [adding, setAdding] = useState(false);
+  const [attendanceEditor, setAttendanceEditor] = useState(null);
   const [name, setName] = useState('');
   const [rating, setRating] = useState(5);
   const presentIds = new Set(attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent').map(a => a.player_id));
+  const attendanceByPlayerId = useMemo(() => new Map(attendees.map(a => [a.player_id, a])), [attendees]);
+  const averageRating = players.length
+    ? players.reduce((sum, player) => sum + Number(player.rating || 0), 0) / players.length
+    : 0;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -944,58 +1349,118 @@ function PlayersPage({ tr, isAdmin, players, attendees, onReload, flash }) {
   };
   const updateRating = async (p, v) => { try { await api.updatePlayer(p.id, { rating: Number(v) }); onReload(); } catch (e) { flash(e.message, 'err'); } };
   const remove = async (p) => { if (!confirm(tr('delete_confirm', { name: p.name }))) return; try { await api.deletePlayer(p.id); onReload(); flash(tr('player_removed')); } catch (e) { flash(e.message, 'err'); } };
+  const sundayStatus = (attendance) => {
+    if (!attendance) return <span className="badge badge-muted">—</span>;
+    if (attendance.status === 'maybe') return <span className="badge badge-yellow">{tr('status_maybe')}</span>;
+    if (attendance.status === 'absent') return <span className="badge badge-red">{tr('status_absent')}</span>;
+    if (attendance.is_late || attendance.status === 'late') return <span className="badge badge-red">{tr('status_late')}</span>;
+    return <span className="badge badge-green">{tr('status_confirmed')}</span>;
+  };
+  const updateChoice = async (intent, position) => {
+    try {
+      const result = await api.vote(intent, position);
+      if (intent === 'yes') flash(result.late ? tr('presence_late') : tr('presence_ok'), result.late ? 'warn' : 'ok');
+      else if (intent === 'maybe') flash(tr('maybe_ok'), 'warn');
+      else flash(tr('absent_ok'), 'err');
+      setAttendanceEditor(null);
+      await onReload();
+    } catch (error) {
+      flash(error.message, 'err');
+      throw error;
+    }
+  };
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>{tr('manage_players')}</h2>
-        <button className="btn-primary" onClick={() => setAdding(a => !a)}>{adding ? tr('cancel') : tr('add_btn')}</button>
-      </div>
-      {adding && (
-        <form className="inline-form" onSubmit={submit}>
-          <input placeholder={tr('full_name_ph')} value={name} onChange={e => setName(e.target.value)} autoFocus />
-          <label className="rating-input">{tr('th_level')}: <strong>{rating}</strong>
-            <input type="range" min="1" max="10" step="0.5" value={rating} onChange={e => setRating(e.target.value)} />
-          </label>
-          <button className="btn-primary" type="submit">{tr('save')}</button>
-        </form>
+    <>
+      <section className="panel players-panel">
+        <div className="panel-head">
+          <h2>{tr('manage_players')}</h2>
+          {isAdmin ? <button className="btn-primary" onClick={() => setAdding(a => !a)}>{adding ? tr('cancel') : tr('add_btn')}</button> : <button className="btn-ghost btn-choice-edit" onClick={() => onRequireAuth(null)}>{currentUser ? tr('auth_account') : tr('auth_login_short')}</button>}
+        </div>
+        {!currentUser && !isAdmin && <p className="muted-txt players-auth-hint">{tr('auth_players_hint')}</p>}
+        <div className="players-overview">
+          <div className="overview-chip">
+            <strong>{players.length}</strong>
+            <span>{tr('th_player')}</span>
+          </div>
+          <div className="overview-chip">
+            <strong>{presentIds.size}</strong>
+            <span>{tr('status_confirmed')}</span>
+          </div>
+          <div className="overview-chip">
+            <strong>{averageRating.toFixed(1)}</strong>
+            <span>{tr('th_level')}</span>
+          </div>
+        </div>
+        {isAdmin && adding && (
+          <form className="inline-form" onSubmit={submit}>
+            <input placeholder={tr('full_name_ph')} value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <label className="rating-input">{tr('th_level')}: <strong>{rating}</strong>
+              <input type="range" min="1" max="10" step="0.5" value={rating} onChange={e => setRating(e.target.value)} />
+            </label>
+            <button className="btn-primary" type="submit">{tr('save')}</button>
+          </form>
+        )}
+        {players.length === 0 ? (
+          <p className="empty-row">{tr('no_players')}</p>
+        ) : (
+          <table className="presences-table player-status-table">
+            <thead><tr><th>{tr('th_name')}</th><th>{tr('th_level')}</th><th>{tr('th_sunday')}</th><th>{tr('th_action')}</th>{isAdmin && <th></th>}</tr></thead>
+            <tbody>
+              {players.map(p => {
+                const attendance = attendanceByPlayerId.get(p.id);
+                const isCurrentUser = currentUser?.id === p.id;
+                const canEditChoice = isCurrentUser && attendance && ['maybe', 'absent'].includes(attendance.status);
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name} {isCurrentUser ? <span className="mini-tag self-tag">{tr('auth_me_badge')}</span> : null}</td>
+                    <td>
+                      {isAdmin ? (
+                        <div className="rating-inline">
+                          <input type="range" min="1" max="10" step="0.5" defaultValue={Number(p.rating)} onChange={e => updateRating(p, e.target.value)} />
+                          <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
+                        </div>
+                      ) : (
+                        <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
+                      )}
+                    </td>
+                    <td>{sundayStatus(attendance)}</td>
+                    <td>
+                      {canEditChoice ? (
+                        <button className="btn-ghost btn-choice-edit" onClick={() => setAttendanceEditor(attendance)}>{tr('player_change_choice')}</button>
+                      ) : isCurrentUser && !attendance ? (
+                        <button className="btn-ghost btn-choice-edit" onClick={() => onRequireAuth('auth_go_home_prompt')}>{tr('auth_go_home')}</button>
+                      ) : (
+                        <span className="muted-txt">—</span>
+                      )}
+                    </td>
+                    {isAdmin && (
+                      <td><button className="row-x" onClick={() => remove(p)}>🗑</button></td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {attendanceEditor && (
+        <AttendanceChangeModal
+          tr={tr}
+          attendance={attendanceEditor}
+          onClose={() => setAttendanceEditor(null)}
+          onSubmit={updateChoice}
+        />
       )}
-      {players.length === 0 ? (
-        <p className="empty-row">{tr('no_players')}</p>
-      ) : (
-        <table className="presences-table">
-          <thead><tr><th>{tr('th_name')}</th><th>{tr('th_level')}</th><th>{tr('th_sunday')}</th>{isAdmin && <th></th>}</tr></thead>
-          <tbody>
-            {players.map(p => (
-              <tr key={p.id}>
-                <td>{p.name}</td>
-                <td>
-                  {isAdmin ? (
-                    <div className="rating-inline">
-                      <input type="range" min="1" max="10" step="0.5" defaultValue={Number(p.rating)} onChange={e => updateRating(p, e.target.value)} />
-                      <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
-                    </div>
-                  ) : (
-                    <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
-                  )}
-                </td>
-                <td>{presentIds.has(p.id) ? <span className="badge badge-green">{tr('status_confirmed')}</span> : <span className="badge badge-muted">—</span>}</td>
-                {isAdmin && (
-                  <td><button className="row-x" onClick={() => remove(p)}>🗑</button></td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    </>
   );
 }
 
 /* ========================================================
    STADIUM PAGE
    ======================================================== */
-function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSetPosition }) {
+function StadiumPage({ tr, lang, isAdmin, teams, match, goals, onReload, onSetPosition }) {
   if (!teams) return <section className="panel"><p className="empty-row">{tr('loading')}</p></section>;
   if (teams.count < 2) {
     return (
@@ -1010,15 +1475,28 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSetPosition
   const diff = Math.abs(teamA.total - teamB.total);
   const goalsByPlayer = Object.fromEntries(goals.map(g => [g.player_id, g]));
   const hasOfficialScore = match?.team_a_score != null && match?.team_b_score != null;
+  const kickoffTime = normalizeClockTime(match?.kickoff_local);
+  const meetingTime = shiftClockTime(kickoffTime, -15);
+  const teamSummaries = [teamA, teamB].map((team, index) => ({
+    key: index === 0 ? 'A' : 'B',
+    label: index === 0 ? tr('team_a') : tr('team_b'),
+    total: team.total.toFixed(1),
+    starters: team.starters.length,
+    subs: team.subs.length,
+    average: team.starters.length ? (team.starters.reduce((sum, player) => sum + player.rating, 0) / team.starters.length).toFixed(1) : '0.0',
+    preview: team.starters.slice(0, 4),
+  }));
 
 
   // Génération du message WhatsApp — i18n FR/DE
   const shareToWhatsApp = () => {
     if (!teamA || !teamB) return;
     const fmt = teams?.format?.format || '';
+    const shareMeetingTime = formatShareTime(meetingTime, lang);
+    const shareKickoffTime = formatShareTime(kickoffTime, lang);
 
     let msg = `${tr('wa_title')}\n\n`;
-    msg += `${tr('wa_meet')}\n`;
+    msg += `${replaceTimeToken(tr('wa_meet'), shareMeetingTime)}\n`;
     if (fmt) msg += `${tr('wa_format')} ${fmt}\n`;
     msg += `\n`;
 
@@ -1032,7 +1510,7 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSetPosition
     if (teamB.subs.length > 0) msg += `${tr('wa_subs')} ${teamB.subs.map(s => s.name).join(', ')}\n`;
     msg += `\n`;
 
-    msg += tr('wa_warn_late');
+    msg += replaceTimeToken(tr('wa_warn_late'), shareKickoffTime);
 
     const encodedMsg = encodeURIComponent(msg);
     window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
@@ -1053,6 +1531,33 @@ function StadiumPage({ tr, isAdmin, teams, match, goals, onReload, onSetPosition
           <div className="format-value">{teams.format.format}</div>
           <div className="format-sub">
             {tr('team_a')} <strong>{teamA.total.toFixed(1)}</strong> · {tr('team_b')} <strong>{teamB.total.toFixed(1)}</strong> · {tr('gap')} {diff.toFixed(1)} {tr('pt')}
+          </div>
+        </div>
+
+        <div className="teams-showcase">
+          <div className="teams-showcase-head">
+            <h3>{tr('teams_showcase_title')}</h3>
+            <span>{tr('meeting_at')} {meetingTime}</span>
+          </div>
+          <div className="teams-showcase-grid">
+            {teamSummaries.map(summary => (
+              <article key={summary.key} className={`team-showcase-card team-showcase-card-${summary.key.toLowerCase()}`}>
+                <div className="team-showcase-card-head">
+                  <strong>{summary.label}</strong>
+                  <span className={`pos-tag pos-team-${summary.key}`}>{summary.total} pts</span>
+                </div>
+                <div className="team-showcase-metrics">
+                  <div><strong>{summary.starters}</strong><span>{tr('teams_starters_label')}</span></div>
+                  <div><strong>{summary.average}</strong><span>{tr('teams_avg_label')}</span></div>
+                  <div><strong>{summary.subs}</strong><span>{tr('teams_subs_label')}</span></div>
+                </div>
+                <div className="team-showcase-preview">
+                  {summary.preview.map(player => (
+                    <span key={player.id} className="team-showcase-pill">{player.name.split(' ')[0]}</span>
+                  ))}
+                </div>
+              </article>
+            ))}
           </div>
         </div>
 
@@ -1226,10 +1731,31 @@ function PlayerDot({ tr, isAdmin, player, team, goals, onSet, currentPos }) {
    STATS & CAISSE
    ======================================================== */
 function StatsPage({ tr, scorers, attendance }) {
+  const totalGoals = scorers.reduce((sum, scorer) => sum + Number(scorer.goals || 0), 0);
+  const activePlayers = attendance.filter(player => player.total > 0).length;
+  const bestPunctuality = attendance.reduce((best, player) => {
+    const punctuality = player.shows ? Math.round(((player.shows - player.lates) / player.shows) * 100) : 0;
+    return punctuality > best ? punctuality : best;
+  }, 0);
+
   return (
     <>
-      <section className="panel">
+      <section className="panel stats-panel">
         <div className="panel-head"><h2>{tr('top_scorers_season')}</h2></div>
+        <div className="stats-overview">
+          <div className="overview-chip">
+            <strong>{totalGoals}</strong>
+            <span>{tr('buteurs')}</span>
+          </div>
+          <div className="overview-chip">
+            <strong>{activePlayers}</strong>
+            <span>{tr('th_player')}</span>
+          </div>
+          <div className="overview-chip">
+            <strong>{bestPunctuality}%</strong>
+            <span>{tr('th_punctuality')}</span>
+          </div>
+        </div>
         {scorers.filter(s => s.goals > 0).length === 0 ? (
           <p className="empty-row">{tr('no_goals_season')}</p>
         ) : (
@@ -1278,15 +1804,21 @@ function StatsPage({ tr, scorers, attendance }) {
 function AdminDashboard({
   tr, lang,
   announcements, fines, caisse, players,
-  match, motmResults, teams, matchGoals, calendar,
+  match, motmResults, teams, matchGoals, calendar, inventory,
   onLogout,
   onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
   onPay, onAddExpense, onAddFine,
   onSaveScore, onAddGoal, onSetMatchPhoto,
   onScheduleMatch, onDeleteMatch,
+  onAddInventoryItem, onUpdateInventoryItem, onDeleteInventoryItem,
   onUpdateMatch,
 }) {
   const [section, setSection] = useState('match');
+  const dueCount = fines.filter(f => !f.paid).length;
+  const plannedCount = calendar.filter(item => item.status !== 'done').length;
+  const readyUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_ready || 0), 0);
+  const totalUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_total || 0), 0);
+  const readyRatio = totalUnits ? Math.round((readyUnits / totalUnits) * 100) : 100;
 
   return (
     <>
@@ -1298,11 +1830,30 @@ function AdminDashboard({
           </button>
         </div>
         <p className="admin-welcome">{tr('admin_dash_intro')}</p>
+        <div className="admin-overview-grid">
+          <article className="admin-overview-card">
+            <strong>{announcements.length}</strong>
+            <span>{tr('admin_kpi_ann')}</span>
+          </article>
+          <article className="admin-overview-card">
+            <strong>{plannedCount}</strong>
+            <span>{tr('admin_kpi_plan')}</span>
+          </article>
+          <article className="admin-overview-card">
+            <strong>{dueCount}</strong>
+            <span>{tr('admin_kpi_due')}</span>
+          </article>
+          <article className="admin-overview-card">
+            <strong>{readyRatio}%</strong>
+            <span>{tr('admin_kpi_inventory')}</span>
+          </article>
+        </div>
         <div className="admin-tabs">
           <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>{tr('admin_tab_match')}</button>
           <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_tab_ann')}</button>
           <button className={`admin-tab ${section === 'plan' ? 'active' : ''}`} onClick={() => setSection('plan')}>{tr('admin_tab_plan')}</button>
           <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>{tr('admin_tab_cash')}</button>
+          <button className={`admin-tab ${section === 'gear' ? 'active' : ''}`} onClick={() => setSection('gear')}>{tr('admin_tab_inventory')}</button>
         </div>
       </section>
 
@@ -1346,6 +1897,16 @@ function AdminDashboard({
           tr={tr}
           fines={fines} caisse={caisse} players={players}
           onPay={onPay} onAddExpense={onAddExpense} onAddFine={onAddFine}
+        />
+      )}
+
+      {section === 'gear' && (
+        <AdminInventoryPanel
+          tr={tr}
+          inventory={inventory}
+          onAdd={onAddInventoryItem}
+          onUpdate={onUpdateInventoryItem}
+          onDelete={onDeleteInventoryItem}
         />
       )}
     </>
@@ -1695,6 +2256,202 @@ function AdminPlanningPanel({ tr, lang, calendar, onSchedule, onDelete }) {
   );
 }
 
+function InventoryEditorModal({ tr, item, onClose, onSubmit }) {
+  const [category, setCategory] = useState(item.category || '');
+  const [name, setName] = useState(item.name || '');
+  const [quantityTotal, setQuantityTotal] = useState(item.quantity_total || 0);
+  const [quantityReady, setQuantityReady] = useState(item.quantity_ready || 0);
+  const [storageLocation, setStorageLocation] = useState(item.storage_location || '');
+  const [notes, setNotes] = useState(item.notes || '');
+
+  return (
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="sheet small inventory-sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-head">
+          <h3>{item.name}</h3>
+          <button className="ghost-btn" onClick={onClose}>✕</button>
+        </div>
+        <form className="new-form" onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await onSubmit(item.id, {
+              category,
+              name,
+              quantityTotal: Number(quantityTotal),
+              quantityReady: Number(quantityReady),
+              storageLocation,
+              notes,
+            });
+            onClose();
+          } catch {
+            // The parent already surfaced the error through flash.
+          }
+        }}>
+          <label>{tr('inventory_category')}</label>
+          <input value={category} onChange={e => setCategory(e.target.value)} required />
+          <label>{tr('inventory_name')}</label>
+          <input value={name} onChange={e => setName(e.target.value)} required />
+          <div className="inventory-form-grid compact">
+            <div>
+              <label>{tr('inventory_total')}</label>
+              <input type="number" min="0" value={quantityTotal} onChange={e => setQuantityTotal(e.target.value)} required />
+            </div>
+            <div>
+              <label>{tr('inventory_ready')}</label>
+              <input type="number" min="0" max={quantityTotal} value={quantityReady} onChange={e => setQuantityReady(e.target.value)} required />
+            </div>
+          </div>
+          <label>{tr('inventory_location')}</label>
+          <input value={storageLocation} onChange={e => setStorageLocation(e.target.value)} />
+          <label>{tr('inventory_notes')}</label>
+          <textarea className="ann-textarea" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+          <div className="row-actions">
+            <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
+            <button type="submit" className="btn-primary">{tr('inventory_save')}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AdminInventoryPanel({ tr, inventory, onAdd, onUpdate, onDelete }) {
+  const [category, setCategory] = useState('Ballons');
+  const [name, setName] = useState('');
+  const [quantityTotal, setQuantityTotal] = useState(1);
+  const [quantityReady, setQuantityReady] = useState(1);
+  const [storageLocation, setStorageLocation] = useState('');
+  const [notes, setNotes] = useState('');
+  const [editingItem, setEditingItem] = useState(null);
+
+  const totalItems = inventory.length;
+  const totalUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_total || 0), 0);
+  const readyUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_ready || 0), 0);
+  const alertCount = inventory.filter(item => Number(item.quantity_ready || 0) < Number(item.quantity_total || 0)).length;
+  const readyRatio = totalUnits ? Math.round((readyUnits / totalUnits) * 100) : 100;
+
+  const itemStatus = (item) => {
+    const total = Number(item.quantity_total || 0);
+    const ready = Number(item.quantity_ready || 0);
+    if (ready <= 0) return { label: tr('inventory_status_missing'), className: 'badge badge-red' };
+    if (ready < total) return { label: tr('inventory_status_warn'), className: 'badge badge-yellow' };
+    return { label: tr('inventory_status_ok'), className: 'badge badge-green' };
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      await onAdd({
+        category,
+        name,
+        quantityTotal: Number(quantityTotal),
+        quantityReady: Number(quantityReady),
+        storageLocation,
+        notes,
+      });
+      setName('');
+      setQuantityTotal(1);
+      setQuantityReady(1);
+      setStorageLocation('');
+      setNotes('');
+    } catch {
+      // The parent already surfaced the error through flash.
+    }
+  };
+
+  return (
+    <>
+      <section className="panel admin-card inventory-hero">
+        <div className="panel-head"><h2>{tr('inventory_title')}</h2></div>
+        <p className="pp-intro">{tr('inventory_intro')}</p>
+        <div className="inventory-stats">
+          <div className="overview-chip"><strong>{totalItems}</strong><span>{tr('inventory_items_count')}</span></div>
+          <div className="overview-chip"><strong>{totalUnits}</strong><span>{tr('inventory_units_count')}</span></div>
+          <div className="overview-chip"><strong>{readyRatio}%</strong><span>{tr('inventory_ready_ratio')}</span></div>
+          <div className="overview-chip"><strong>{alertCount}</strong><span>{tr('inventory_alert_count')}</span></div>
+        </div>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('inventory_add')}</h2></div>
+        <form className="inventory-form" onSubmit={submit}>
+          <div className="inventory-form-grid">
+            <div>
+              <label>{tr('inventory_category')}</label>
+              <input value={category} onChange={e => setCategory(e.target.value)} required />
+            </div>
+            <div>
+              <label>{tr('inventory_name')}</label>
+              <input value={name} onChange={e => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label>{tr('inventory_total')}</label>
+              <input type="number" min="0" value={quantityTotal} onChange={e => setQuantityTotal(e.target.value)} required />
+            </div>
+            <div>
+              <label>{tr('inventory_ready')}</label>
+              <input type="number" min="0" max={quantityTotal} value={quantityReady} onChange={e => setQuantityReady(e.target.value)} required />
+            </div>
+            <div>
+              <label>{tr('inventory_location')}</label>
+              <input value={storageLocation} onChange={e => setStorageLocation(e.target.value)} />
+            </div>
+            <div>
+              <label>{tr('inventory_notes')}</label>
+              <input value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
+          </div>
+          <div className="row-actions inventory-form-actions">
+            <button type="submit" className="btn-primary" disabled={!category.trim() || !name.trim()}>{tr('inventory_add')}</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel admin-card">
+        <div className="panel-head"><h2>{tr('inventory_items_count')} · {totalItems}</h2></div>
+        {inventory.length === 0 ? (
+          <p className="empty-row">{tr('inventory_empty')}</p>
+        ) : (
+          <div className="inventory-grid">
+            {inventory.map(item => {
+              const status = itemStatus(item);
+              return (
+                <article key={item.id} className="inventory-card">
+                  <div className="inventory-card-head">
+                    <span className="inventory-category">{item.category}</span>
+                    <span className={status.className}>{status.label}</span>
+                  </div>
+                  <h3>{item.name}</h3>
+                  <div className="inventory-counts">
+                    <div><strong>{item.quantity_ready}</strong><span>{tr('inventory_ready')}</span></div>
+                    <div><strong>{item.quantity_total}</strong><span>{tr('inventory_total')}</span></div>
+                  </div>
+                  {item.storage_location && <p className="inventory-meta"><strong>{tr('inventory_location')}:</strong> {item.storage_location}</p>}
+                  {item.notes && <p className="inventory-meta"><strong>{tr('inventory_notes')}:</strong> {item.notes}</p>}
+                  <div className="inventory-actions">
+                    <button className="btn-ghost" onClick={() => setEditingItem(item)} aria-label={tr('inventory_save')}>✎</button>
+                    <button className="row-x" onClick={() => onDelete(item.id)} aria-label={tr('inventory_delete')}>🗑</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {editingItem && (
+        <InventoryEditorModal
+          tr={tr}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSubmit={onUpdate}
+        />
+      )}
+    </>
+  );
+}
+
 /* ========================================================
    CAISSE PAGE — solde + dépenses + amendes (+ amende manuelle)
    ======================================================== */
@@ -1905,10 +2662,10 @@ function WinningGallerySection({ tr, lang, gallery }) {
 /* ========================================================
    MOTM SECTION — vote du joueur du jour (visible joueurs)
    ======================================================== */
-function MotMSection({ tr, lang, match, attendees, players, results, lastWinner, onVote }) {
-  const [voterId, setVoterId] = useState('');
+function MotMSection({ tr, lang, match, attendees, players, results, lastWinner, currentUser, onRequireAuth, onVote }) {
   const [votedId, setVotedId] = useState('');
   const [busy, setBusy] = useState(false);
+  const currentUserId = currentUser?.id || null;
 
   // Liste des votants potentiels = joueurs présents (non maybe/absent)
   const voters = (attendees || [])
@@ -1917,16 +2674,38 @@ function MotMSection({ tr, lang, match, attendees, players, results, lastWinner,
       const p = (players || []).find(pp => pp.id === a.player_id);
       return { id: a.player_id, name: p?.name || a.name };
     });
+  const currentVoter = currentUserId ? voters.find(v => v.id === currentUserId) : null;
+  const candidates = voters.filter(v => v.id !== currentUserId);
+  const totalVotes = (results || []).reduce((sum, row) => sum + Number(row.votes || 0), 0);
+  const leader = results && results.length > 0 ? results[0] : null;
+
+  useEffect(() => {
+    if (!match?.id || !currentUserId) return;
+
+    let cancelled = false;
+
+    api.motmMyVote(match.id)
+      .then((row) => {
+        if (!cancelled) setVotedId(row?.voted_id ? String(row.voted_id) : '');
+      })
+      .catch(() => {
+        if (!cancelled) setVotedId('');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [match?.id, currentUserId]);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!voterId || !votedId) return;
-    if (parseInt(voterId, 10) === parseInt(votedId, 10)) {
+    if (!votedId) return;
+    if (currentUser && parseInt(currentUser.id, 10) === parseInt(votedId, 10)) {
       alert(tr('motm_self_vote_err'));
       return;
     }
     setBusy(true);
-    try { await onVote(parseInt(voterId, 10), parseInt(votedId, 10)); setVoterId(''); setVotedId(''); }
+    try { await onVote(parseInt(votedId, 10)); }
     finally { setBusy(false); }
   };
 
@@ -1955,32 +2734,68 @@ function MotMSection({ tr, lang, match, attendees, players, results, lastWinner,
     );
   }
 
+  if (!currentUser) {
+    return (
+      <section className="panel motm-section">
+        <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
+        <p className="pp-intro motm-copy">{tr('motm_intro')}</p>
+        <div className="account-presence-banner motm-login-banner">
+          <div>
+            <strong>{tr('motm_login_hint')}</strong>
+            <p className="muted-txt">{tr('auth_home_sub')}</p>
+          </div>
+          <button type="button" className="btn-primary" onClick={() => onRequireAuth(null)}>{tr('auth_login_short')}</button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!currentVoter) {
+    return (
+      <section className="panel motm-section">
+        <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
+        <p className="empty-row">{tr('motm_presence_required')}</p>
+      </section>
+    );
+  }
+
   return (
     <section className="panel motm-section">
       <div className="panel-head"><h2>{tr('motm_title')}</h2></div>
-      <p className="pp-intro">{tr('motm_intro')}</p>
-      <form className="motm-form" onSubmit={submit}>
-        <label>{tr('motm_who_are_you')}</label>
-        <select value={voterId} onChange={e => setVoterId(e.target.value)} required>
-          <option value="">{tr('pick_one')}</option>
-          {voters.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
-        <label>{tr('motm_pick_player')}</label>
-        <select value={votedId} onChange={e => setVotedId(e.target.value)} required>
-          <option value="">{tr('pick_one')}</option>
-          {voters.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
-        <div className="row-actions">
-          <button type="submit" className="btn-primary" disabled={busy || !voterId || !votedId}>{busy ? '…' : '💾'}</button>
+      <div className="motm-hero">
+        <div>
+          <p className="pp-intro motm-copy">{tr('motm_intro')}</p>
+          {totalVotes > 0 && <p className="motm-total-copy">{tr('motm_votes_total', { n: totalVotes })}</p>}
         </div>
+        {leader && (
+          <div className="motm-leader-card">
+            <span>{tr('motm_live_leader')}</span>
+            <strong>{leader.name}</strong>
+            <em>🏆 {leader.votes} {leader.votes > 1 ? tr('motm_votes') : tr('motm_one_vote')}</em>
+          </div>
+        )}
+      </div>
+      <form className="motm-form" onSubmit={submit}>
+        <div className="motm-field">
+          <label>{tr('motm_vote_as')}</label>
+          <div className="motm-current-user">{currentVoter.name}</div>
+        </div>
+        <div className="motm-field">
+          <label>{tr('motm_pick_player')}</label>
+          <select value={votedId} onChange={e => setVotedId(e.target.value)} required>
+            <option value="">{tr('pick_one')}</option>
+            {candidates.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </select>
+        </div>
+        <button type="submit" className="btn-primary motm-submit" disabled={busy || !votedId}>{busy ? '…' : tr('motm_submit')}</button>
       </form>
 
       {results && results.length > 0 && (
         <div className="motm-results">
           <h3>{tr('motm_results')}</h3>
-          <ol className="rank-list">
+          <ol className="rank-list motm-rank-list">
             {results.slice(0, 3).map((r, i) => (
-              <li key={r.id} className={`rank-${i + 1}`}>
+              <li key={r.id} className={`rank-${i + 1} motm-rank-card`}>
                 <span className="rank-n">{i + 1}</span>
                 <div className="tile-avatar small">{r.name.slice(0, 1).toUpperCase()}</div>
                 <span className="rank-name">{r.name}</span>
@@ -2098,7 +2913,12 @@ function AdminMatchSettings({ tr, match, onUpdateMatch }) {
   const [kickoff, setKickoff] = useState(match?.kickoff_local ? match.kickoff_local.slice(0, 5) : '10:00');
   const [notes, setNotes] = useState(match?.notes || '');
   const [busy, setBusy] = useState(false);
-  // Plus de synchronisation automatique du state après le montage
+  const formKey = [
+    match?.id || 'match',
+    match?.match_date || '',
+    match?.kickoff_local || DEFAULT_KICKOFF,
+    match?.notes || '',
+  ].join(':');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2113,10 +2933,10 @@ function AdminMatchSettings({ tr, match, onUpdateMatch }) {
   if (!match) return null;
 
   return (
-    <form className="compact-admin-form" onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-      <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ maxWidth: 120 }} required />
-      <input type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} style={{ maxWidth: 90 }} required />
-      <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder={tr('admin_plan_notes_ph')} style={{ flex: 1 }} />
+    <form key={formKey} className="compact-admin-form" onSubmit={handleSubmit}>
+      <input className="compact-admin-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+      <input className="compact-admin-time" type="time" value={kickoff} onChange={e => setKickoff(e.target.value)} required />
+      <input className="compact-admin-notes" type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder={tr('admin_plan_notes_ph')} />
       <button type="submit" className="btn-primary" disabled={busy || !date || !kickoff}>{busy ? '…' : '💾'}</button>
     </form>
   );

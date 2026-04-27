@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 require('dotenv').config();
 const { neon } = require('@neondatabase/serverless');
 
@@ -8,33 +9,200 @@ const port = process.env.PORT || 3000;
 const TZ = 'Europe/Berlin';
 const LATE_FINE_EUR = 2.0;
 const PER_TEAM = 11; // format unique : 11 vs 11
+const AUTH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const AUTH_SECRET = process.env.AUTH_SECRET?.trim() || crypto.randomBytes(32).toString('hex');
 
 app.use(cors());
 app.use(express.json());
 
 const sql = neon(process.env.DATABASE_URL);
 
-// ---------- admin auth (PIN partagé via env var) ----------
-const ADMIN_CODE = process.env.ADMIN_CODE || '';
+// ---------- admin auth (code partagé ou PIN d'un joueur admin) ----------
+const ADMIN_CODE = (process.env.ADMIN_CODE || process.env.ADMIN_PASSWORD || process.env.ADMIN_PIN || '').trim();
 
-function requireAdmin(req, res, next) {
-  if (!ADMIN_CODE) {
-    return res.status(503).json({ error: 'ADMIN_CODE non configuré côté serveur' });
+async function hasAdminPinConfigured() {
+  try {
+    const rows = await sql`
+      SELECT 1
+      FROM players
+      WHERE is_admin = TRUE AND COALESCE(pin, '') <> ''
+      LIMIT 1
+    `;
+    return rows.length > 0;
+  } catch {
+    return false;
   }
-  const provided = req.headers['x-admin-code'];
-  if (provided !== ADMIN_CODE) {
-    return res.status(401).json({ error: 'Accès refusé — code admin invalide' });
+}
+
+async function isValidAdminCredential(provided) {
+  if (!provided) return false;
+  if (ADMIN_CODE && provided === ADMIN_CODE) return true;
+  try {
+    const rows = await sql`
+      SELECT 1
+      FROM players
+      WHERE is_admin = TRUE AND pin = ${provided}
+      LIMIT 1
+    `;
+    return rows.length > 0;
+  } catch {
+    return false;
   }
-  next();
+}
+
+async function requireAdmin(req, res, next) {
+  const provided = typeof req.headers['x-admin-code'] === 'string'
+    ? req.headers['x-admin-code'].trim()
+    : '';
+
+  try {
+    const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured();
+    if (!hasConfiguredAdmin) {
+      return res.status(503).json({ error: 'Aucun accès admin configuré côté serveur' });
+    }
+    if (!(await isValidAdminCredential(provided))) {
+      return res.status(401).json({ error: 'Accès refusé — code ou PIN admin invalide' });
+    }
+    next();
+  } catch (error) {
+    console.error('admin auth error:', error);
+    res.status(500).json({ error: 'Erreur de vérification admin' });
+  }
 }
 
 // Endpoint de vérification du code admin (le frontend l'appelle au login)
-app.post('/api/admin/check', (req, res) => {
-  const code = req.body?.code || req.headers['x-admin-code'];
-  if (!ADMIN_CODE) return res.status(503).json({ ok: false, error: 'ADMIN_CODE non configuré' });
-  if (code !== ADMIN_CODE) return res.status(401).json({ ok: false, error: 'Code invalide' });
+app.post('/api/admin/check', async (req, res) => {
+  const code = typeof req.body?.code === 'string'
+    ? req.body.code.trim()
+    : typeof req.headers['x-admin-code'] === 'string'
+      ? req.headers['x-admin-code'].trim()
+      : '';
+
+  const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured();
+  if (!hasConfiguredAdmin) return res.status(503).json({ ok: false, error: 'Aucun accès admin configuré' });
+  if (!(await isValidAdminCredential(code))) return res.status(401).json({ ok: false, error: 'Code ou PIN admin invalide' });
   res.json({ ok: true });
 });
+
+function normalizeEmail(value = '') {
+  return value.trim().toLowerCase();
+}
+
+function normalizePhone(value = '') {
+  return value.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidPhone(value) {
+  return /^[+]?[0-9]{6,20}$/.test(value);
+}
+
+function normalizeAvatarUrl(value = '') {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) return null;
+  if (trimmed.length > 1_500_000) {
+    throw new Error('Photo de profil trop lourde');
+  }
+
+  const isDataImage = /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=]+$/i.test(trimmed);
+  const isRemoteImage = /^https?:\/\/\S+$/i.test(trimmed);
+  if (!isDataImage && !isRemoteImage) {
+    throw new Error('Format de photo invalide');
+  }
+
+  return trimmed;
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const digest = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${digest}`;
+}
+
+function verifyPassword(password, storedHash = '') {
+  const [salt, expectedDigest] = storedHash.split(':');
+  if (!salt || !expectedDigest) return false;
+  const actualDigest = crypto.scryptSync(password, salt, 64).toString('hex');
+  const expected = Buffer.from(expectedDigest, 'hex');
+  const actual = Buffer.from(actualDigest, 'hex');
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function signToken(playerId) {
+  const payload = {
+    sub: playerId,
+    exp: Date.now() + AUTH_TOKEN_TTL_MS,
+    nonce: crypto.randomBytes(8).toString('hex'),
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyToken(token = '') {
+  const [encodedPayload, signature] = token.split('.');
+  if (!encodedPayload || !signature) return null;
+  const expectedSignature = crypto.createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  const expected = Buffer.from(expectedSignature);
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+    if (!payload?.sub || !payload?.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function readAuthToken(req) {
+  const rawHeader = typeof req.headers.authorization === 'string'
+    ? req.headers.authorization.trim()
+    : '';
+  if (!rawHeader.startsWith('Bearer ')) return '';
+  return rawHeader.slice(7).trim();
+}
+
+function serializePlayerAccount(player) {
+  return {
+    id: player.id,
+    name: player.name,
+    pronoun: player.pronoun,
+    age: player.age,
+    email: player.email,
+    phone: player.phone,
+    avatarUrl: player.avatar_url || null,
+    rating: player.rating,
+    isAdmin: !!player.is_admin,
+  };
+}
+
+async function requirePlayerAuth(req, res, next) {
+  const token = readAuthToken(req);
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: 'Session joueur invalide ou expirée' });
+
+  try {
+    const [player] = await sql`
+      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      FROM players
+      WHERE id = ${payload.sub}
+      LIMIT 1
+    `;
+    if (!player?.password_hash) {
+      return res.status(401).json({ error: 'Compte joueur introuvable' });
+    }
+    req.player = serializePlayerAccount(player);
+    next();
+  } catch (error) {
+    console.error('player auth error:', error);
+    res.status(500).json({ error: 'Erreur de vérification joueur' });
+  }
+}
 
 // ---------- helpers ----------
 function nextSundayBerlin() {
@@ -68,8 +236,215 @@ async function isLateForMatch(match) {
   return late;
 }
 
+async function ensureInventoryTable() {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS inventory_items (
+        id SERIAL PRIMARY KEY,
+        category TEXT NOT NULL,
+        name TEXT NOT NULL,
+        quantity_total INT NOT NULL DEFAULT 0 CHECK (quantity_total >= 0),
+        quantity_ready INT NOT NULL DEFAULT 0 CHECK (quantity_ready >= 0 AND quantity_ready <= quantity_total),
+        storage_location TEXT,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (category, name)
+      )
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_inventory_items_category_name
+      ON inventory_items(category, name)
+    `;
+    await sql`
+      INSERT INTO inventory_items (category, name, quantity_total, quantity_ready, storage_location, notes)
+      SELECT category, name, quantity_total, quantity_ready, storage_location, notes
+      FROM (
+        VALUES
+          ('Ballons', 'Ballons de match', 12, 10, 'Armoire principale', 'Verifier la pression avant chaque dimanche'),
+          ('Chasubles', 'Chasubles vertes', 18, 16, 'Sac textile A', 'Lot principal pour Team A'),
+          ('Chasubles', 'Chasubles rouges', 18, 17, 'Sac textile B', 'Lot principal pour Team B'),
+          ('Cones', 'Coupelles d''echauffement', 40, 35, 'Caisse terrain', 'Pour ateliers et delimitation'),
+          ('Arbitrage', 'Sifflets', 3, 3, 'Boite coach', 'Un reserve inclus'),
+          ('Entretien', 'Pompes + aiguilles', 2, 2, 'Armoire principale', 'Controle hebdomadaire recommande'),
+          ('Sante', 'Trousse de secours', 1, 1, 'Sac medical', 'Verifier le reapprovisionnement mensuel'),
+          ('Recuperation', 'Glaciere + poches de glace', 1, 1, 'Local materiel', 'Utilise pour les petits bobos')
+      ) AS seed(category, name, quantity_total, quantity_ready, storage_location, notes)
+      WHERE NOT EXISTS (SELECT 1 FROM inventory_items)
+    `;
+  } catch (error) {
+    console.error('inventory bootstrap error:', error);
+  }
+}
+
+async function ensurePlayerAccountSchema() {
+  try {
+    await sql`ALTER TABLE players ALTER COLUMN pin DROP NOT NULL`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS pronoun TEXT`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS age INT CHECK (age IS NULL OR age BETWEEN 10 AND 99)`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS email TEXT`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS phone TEXT`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_url TEXT`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS password_hash TEXT`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_unique ON players (LOWER(email)) WHERE email IS NOT NULL`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_players_phone_unique ON players (phone) WHERE phone IS NOT NULL`;
+  } catch (error) {
+    console.error('player account bootstrap error:', error);
+  }
+}
+
+const playerAccountsBootstrap = ensurePlayerAccountSchema();
+const inventoryBootstrap = ensureInventoryTable();
+
 // ---------- routes ----------
 app.get('/', (_req, res) => res.send('⚽ CAMAS Sport API'));
+
+app.post('/api/auth/register', async (req, res) => {
+  await playerAccountsBootstrap;
+
+  const {
+    name = '', pronoun = '', age,
+    email = '', phone = '',
+    avatarUrl = '',
+    password = '', passwordConfirm = '',
+  } = req.body || {};
+
+  const cleanName = name.trim();
+  const cleanPronoun = pronoun.trim();
+  const cleanEmail = normalizeEmail(email);
+  const cleanPhone = normalizePhone(phone);
+  const parsedAge = Number.parseInt(age, 10);
+  let cleanAvatarUrl;
+
+  try {
+    cleanAvatarUrl = normalizeAvatarUrl(avatarUrl);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  if (!cleanName || !cleanPronoun || Number.isNaN(parsedAge) || !cleanEmail || !cleanPhone || !password || !passwordConfirm) {
+    return res.status(400).json({ error: 'Tous les champs du compte sont requis' });
+  }
+  if (!isValidEmail(cleanEmail)) return res.status(400).json({ error: 'Adresse email invalide' });
+  if (!isValidPhone(cleanPhone)) return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+  if (parsedAge < 10 || parsedAge > 99) return res.status(400).json({ error: 'Âge invalide' });
+  if (password.length < 8) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères' });
+  if (password !== passwordConfirm) return res.status(400).json({ error: 'Les mots de passe ne correspondent pas' });
+
+  try {
+    const emailConflict = await sql`
+      SELECT id FROM players
+      WHERE LOWER(email) = ${cleanEmail}
+      LIMIT 1
+    `;
+    if (emailConflict.length) return res.status(409).json({ error: 'Cet email est déjà utilisé' });
+
+    const phoneConflict = await sql`
+      SELECT id FROM players
+      WHERE phone = ${cleanPhone}
+      LIMIT 1
+    `;
+    if (phoneConflict.length) return res.status(409).json({ error: 'Ce numéro de téléphone est déjà utilisé' });
+
+    const passwordHash = hashPassword(password);
+    const existingByName = await sql`
+      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      FROM players
+      WHERE LOWER(name) = LOWER(${cleanName})
+      LIMIT 1
+    `;
+
+    let rows;
+    if (existingByName.length) {
+      if (existingByName[0].password_hash) {
+        return res.status(409).json({ error: 'Un compte existe déjà pour ce joueur' });
+      }
+      rows = await sql`
+        UPDATE players
+        SET pronoun = ${cleanPronoun},
+            age = ${parsedAge},
+            email = ${cleanEmail},
+            phone = ${cleanPhone},
+            avatar_url = ${cleanAvatarUrl},
+            password_hash = ${passwordHash}
+        WHERE id = ${existingByName[0].id}
+        RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+      `;
+    } else {
+      rows = await sql`
+        INSERT INTO players (name, pronoun, age, email, phone, avatar_url, password_hash, rating)
+        VALUES (${cleanName}, ${cleanPronoun}, ${parsedAge}, ${cleanEmail}, ${cleanPhone}, ${cleanAvatarUrl}, ${passwordHash}, 5.0)
+        RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+      `;
+    }
+
+    const user = serializePlayerAccount(rows[0]);
+    res.status(201).json({ user, token: signToken(user.id) });
+  } catch (error) {
+    console.error('register error:', error);
+    res.status(500).json({ error: 'Erreur lors de la création du compte' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  await playerAccountsBootstrap;
+
+  const { identifier = '', password = '' } = req.body || {};
+  const cleanIdentifier = identifier.trim();
+  const emailCandidate = normalizeEmail(cleanIdentifier);
+  const phoneCandidate = normalizePhone(cleanIdentifier);
+
+  if (!cleanIdentifier || !password) {
+    return res.status(400).json({ error: 'Identifiant et mot de passe requis' });
+  }
+
+  try {
+    const rows = await sql`
+      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      FROM players
+      WHERE LOWER(email) = ${emailCandidate} OR phone = ${phoneCandidate}
+      LIMIT 1
+    `;
+    const player = rows[0];
+    if (!player?.password_hash || !verifyPassword(password, player.password_hash)) {
+      return res.status(401).json({ error: 'Identifiants invalides' });
+    }
+
+    const user = serializePlayerAccount(player);
+    res.json({ user, token: signToken(user.id) });
+  } catch (error) {
+    console.error('login error:', error);
+    res.status(500).json({ error: 'Erreur lors de la connexion' });
+  }
+});
+
+app.get('/api/auth/me', requirePlayerAuth, async (req, res) => {
+  res.json({ user: req.player });
+});
+
+app.patch('/api/auth/me', requirePlayerAuth, async (req, res) => {
+  await playerAccountsBootstrap;
+
+  let cleanAvatarUrl;
+  try {
+    cleanAvatarUrl = normalizeAvatarUrl(req.body?.avatarUrl);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  try {
+    const rows = await sql`
+      UPDATE players
+      SET avatar_url = ${cleanAvatarUrl}
+      WHERE id = ${req.player.id}
+      RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+    `;
+    res.json({ user: serializePlayerAccount(rows[0]) });
+  } catch (error) {
+    console.error('profile update error:', error);
+    res.status(500).json({ error: 'Erreur lors de la mise à jour du profil' });
+  }
+});
 
 // Players
 app.get('/api/players', async (_req, res) => {
@@ -82,44 +457,14 @@ app.post('/api/players', async (req, res) => {
   if (!name?.trim()) return res.status(400).json({ error: 'Nom requis' });
   try {
     const rows = await sql`
-      INSERT INTO players (name, rating, pin)
-      VALUES (${name.trim()}, ${rating}, '')
+      INSERT INTO players (name, rating)
+      VALUES (${name.trim()}, ${rating})
       RETURNING id, name, rating
     `;
     res.json(rows[0]);
   } catch (e) {
     if (e.message.includes('unique')) return res.status(409).json({ error: 'Ce nom est déjà utilisé' });
     res.status(500).json({ error: 'Erreur création joueur' });
-  }
-});
-
-// Modification du code PIN par le joueur lui-même
-app.patch('/api/players/:id/pin', async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
-
-  const { oldPin = '', newPin = '' } = req.body || {};
-
-  if (!/^\d{4}$/.test(newPin)) {
-    return res.status(400).json({ error: 'Le nouveau code doit être 4 chiffres' });
-  }
-  if (oldPin && newPin === oldPin) {
-    return res.status(400).json({ error: 'Le nouveau code doit être différent' });
-  }
-
-  try {
-    const [player] = await sql`SELECT pin FROM players WHERE id = ${id}`;
-    if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
-
-    if (player.pin && player.pin !== oldPin) {
-      return res.status(403).json({ error: 'Ancien code PIN incorrect' });
-    }
-
-    await sql`UPDATE players SET pin = ${newPin} WHERE id = ${id}`;
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('updatePin error:', e);
-    res.status(500).json({ error: 'Erreur lors de la modification du code' });
   }
 });
 
@@ -175,9 +520,12 @@ app.patch('/api/match/:id', requireAdmin, async (req, res) => {
 });
 
 // Vote — 3 intentions possibles : 'yes' (vient), 'maybe' (peut-être), 'no' (absent)
-app.post('/api/vote', async (req, res) => {
-  const { playerId, position, intent = 'yes' } = req.body;
-  if (!playerId) return res.status(400).json({ error: 'Joueur requis' });
+app.post('/api/vote', requirePlayerAuth, async (req, res) => {
+  const { playerId: rawPlayerId, position, intent = 'yes' } = req.body || {};
+  const playerId = req.player.id;
+  if (rawPlayerId && Number(rawPlayerId) !== Number(playerId)) {
+    return res.status(403).json({ error: 'Tu ne peux modifier que ta propre présence' });
+  }
   if (!['yes','maybe','no'].includes(intent)) {
     return res.status(400).json({ error: 'Intention invalide' });
   }
@@ -246,8 +594,10 @@ app.patch('/api/vote/position', async (req, res) => {
 });
 
 // Un-vote (cancel presence)
-app.delete('/api/vote', async (req, res) => {
-  const { playerId, matchId } = req.body;
+app.delete('/api/vote', requirePlayerAuth, async (req, res) => {
+  const { matchId } = req.body || {};
+  const playerId = req.player.id;
+  if (!matchId) return res.status(400).json({ error: 'Match requis' });
   await sql`DELETE FROM attendances WHERE match_id = ${matchId} AND player_id = ${playerId}`;
   await sql`DELETE FROM fines WHERE match_id = ${matchId} AND player_id = ${playerId} AND paid = FALSE`;
   res.json({ ok: true });
@@ -431,6 +781,118 @@ app.get('/api/caisse', requireAdmin, async (_req, res) => {
 });
 
 // ========================================================
+// INVENTAIRE MATERIEL
+// ========================================================
+app.get('/api/inventory', requireAdmin, async (_req, res) => {
+  try {
+    await inventoryBootstrap;
+    const rows = await sql`
+      SELECT *
+      FROM inventory_items
+      ORDER BY category ASC, name ASC
+    `;
+    res.json(rows);
+  } catch (error) {
+    console.error('inventory list error:', error);
+    res.status(500).json({ error: 'Erreur lecture inventaire' });
+  }
+});
+
+app.post('/api/inventory', requireAdmin, async (req, res) => {
+  const category = (req.body?.category || '').toString().trim();
+  const name = (req.body?.name || '').toString().trim();
+  const quantityTotal = Number.parseInt(req.body?.quantityTotal ?? 0, 10);
+  const quantityReady = Number.parseInt(req.body?.quantityReady ?? quantityTotal, 10);
+  const storageLocation = (req.body?.storageLocation || '').toString().trim() || null;
+  const notes = (req.body?.notes || '').toString().trim() || null;
+
+  if (!category || !name) {
+    return res.status(400).json({ error: 'Categorie et nom requis' });
+  }
+  if (!Number.isInteger(quantityTotal) || !Number.isInteger(quantityReady) || quantityTotal < 0 || quantityReady < 0 || quantityReady > quantityTotal) {
+    return res.status(400).json({ error: 'Quantites invalides' });
+  }
+
+  try {
+    await inventoryBootstrap;
+    const rows = await sql`
+      INSERT INTO inventory_items (category, name, quantity_total, quantity_ready, storage_location, notes)
+      VALUES (${category}, ${name}, ${quantityTotal}, ${quantityReady}, ${storageLocation}, ${notes})
+      RETURNING *
+    `;
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('inventory create error:', error);
+    if (error.message.includes('unique')) {
+      return res.status(409).json({ error: 'Cet element existe deja dans l\'inventaire' });
+    }
+    res.status(500).json({ error: 'Erreur ajout inventaire' });
+  }
+});
+
+app.patch('/api/inventory/:id', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+
+  try {
+    await inventoryBootstrap;
+    const [current] = await sql`SELECT * FROM inventory_items WHERE id = ${id}`;
+    if (!current) return res.status(404).json({ error: 'Element introuvable' });
+
+    const category = req.body?.category !== undefined ? req.body.category.toString().trim() : current.category;
+    const name = req.body?.name !== undefined ? req.body.name.toString().trim() : current.name;
+    const quantityTotal = req.body?.quantityTotal !== undefined ? Number.parseInt(req.body.quantityTotal, 10) : current.quantity_total;
+    const quantityReady = req.body?.quantityReady !== undefined ? Number.parseInt(req.body.quantityReady, 10) : current.quantity_ready;
+    const storageLocation = req.body?.storageLocation !== undefined
+      ? (req.body.storageLocation || '').toString().trim() || null
+      : current.storage_location;
+    const notes = req.body?.notes !== undefined
+      ? (req.body.notes || '').toString().trim() || null
+      : current.notes;
+
+    if (!category || !name) {
+      return res.status(400).json({ error: 'Categorie et nom requis' });
+    }
+    if (!Number.isInteger(quantityTotal) || !Number.isInteger(quantityReady) || quantityTotal < 0 || quantityReady < 0 || quantityReady > quantityTotal) {
+      return res.status(400).json({ error: 'Quantites invalides' });
+    }
+
+    const rows = await sql`
+      UPDATE inventory_items
+      SET category = ${category},
+          name = ${name},
+          quantity_total = ${quantityTotal},
+          quantity_ready = ${quantityReady},
+          storage_location = ${storageLocation},
+          notes = ${notes},
+          updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('inventory update error:', error);
+    if (error.message.includes('unique')) {
+      return res.status(409).json({ error: 'Cet element existe deja dans l\'inventaire' });
+    }
+    res.status(500).json({ error: 'Erreur mise a jour inventaire' });
+  }
+});
+
+app.delete('/api/inventory/:id', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+  try {
+    await inventoryBootstrap;
+    await sql`DELETE FROM inventory_items WHERE id = ${id}`;
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('inventory delete error:', error);
+    res.status(500).json({ error: 'Erreur suppression inventaire' });
+  }
+});
+
+// ========================================================
 // ANNOUNCEMENTS — annonces publiées par l'admin
 // ========================================================
 app.get('/api/announcements', async (_req, res) => {
@@ -486,15 +948,30 @@ app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
 // ========================================================
 // MAN OF THE MATCH — vote du joueur du jour
 // ========================================================
-app.post('/api/motm/vote', async (req, res) => {
-  const { matchId, voterId, votedId } = req.body;
-  if (!matchId || !voterId || !votedId) {
-    return res.status(400).json({ error: 'matchId, voterId et votedId requis' });
+app.post('/api/motm/vote', requirePlayerAuth, async (req, res) => {
+  const { matchId, votedId } = req.body || {};
+  const voterId = req.player.id;
+  if (!matchId || !votedId) {
+    return res.status(400).json({ error: 'matchId et votedId requis' });
   }
   if (Number(voterId) === Number(votedId)) {
     return res.status(400).json({ error: 'Tu ne peux pas voter pour toi-même' });
   }
   try {
+    const allowedVoters = await sql`
+      SELECT player_id
+      FROM attendances
+      WHERE match_id = ${matchId} AND player_id IN (${voterId}, ${votedId})
+        AND status IN ('registered', 'present', 'late')
+    `;
+    const allowedIds = new Set(allowedVoters.map(row => Number(row.player_id)));
+    if (!allowedIds.has(Number(voterId))) {
+      return res.status(403).json({ error: 'Tu dois être présent pour voter' });
+    }
+    if (!allowedIds.has(Number(votedId))) {
+      return res.status(400).json({ error: 'Le joueur choisi n’est pas éligible' });
+    }
+
     await sql`
       INSERT INTO motm_votes (match_id, voter_id, voted_id)
       VALUES (${matchId}, ${voterId}, ${votedId})
@@ -524,11 +1001,11 @@ app.get('/api/motm/:matchId', async (req, res) => {
   }
 });
 
-app.get('/api/motm/me/:matchId/:voterId', async (req, res) => {
+app.get('/api/motm/me/:matchId', requirePlayerAuth, async (req, res) => {
   try {
     const [row] = await sql`
       SELECT voted_id FROM motm_votes
-      WHERE match_id = ${req.params.matchId} AND voter_id = ${req.params.voterId}
+      WHERE match_id = ${req.params.matchId} AND voter_id = ${req.player.id}
     `;
     res.json(row || null);
   } catch {
@@ -680,7 +1157,6 @@ app.get('/api/match/gallery', async (_req, res) => {
 // ========================================================
 // CONSENT 
 // ========================================================
-const crypto = require('crypto');
 app.post('/api/consent', async (req, res) => {
   const { kind = 'cookies', granted = true, playerId = null } = req.body || {};
   const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
@@ -760,7 +1236,9 @@ app.get('/api/players/:id/profile', async (req, res) => {
 });
 
 if (require.main === module) {
-  app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
+  inventoryBootstrap.finally(() => {
+    app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
+  });
 }
 
 module.exports = app;

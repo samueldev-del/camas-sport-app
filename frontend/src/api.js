@@ -85,6 +85,7 @@ export const api = {
   playerProfile:   (id) => req(`/api/players/${id}/profile`),
 
   currentMatch:    () => req('/api/match/current'),
+  birthdaysToday:  () => req('/api/birthdays/today'),
   lastMatch:       () => req('/api/match/last'),
 
   // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'.

@@ -108,6 +108,31 @@ function formatShareTime(value, lang) {
   return lang === 'fr' ? normalized.replace(':', 'h') : normalized;
 }
 
+function formatBirthDateInput(value = '') {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  const parts = [];
+
+  if (digits.length > 0) parts.push(digits.slice(0, 2));
+  if (digits.length > 2) parts.push(digits.slice(2, 4));
+  if (digits.length > 4) parts.push(digits.slice(4, 8));
+
+  return parts.join('.');
+}
+
+function isBirthDateComplete(value = '') {
+  return /^\d{2}\.\d{2}\.\d{4}$/.test(value);
+}
+
+function formatBirthDateDisplay(value = '') {
+  if (!value) return '—';
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(value)) return value;
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
 function initialsFromName(value = '') {
   const parts = value.trim().split(/\s+/).filter(Boolean).slice(0, 2);
   if (!parts.length) return 'CM';
@@ -202,6 +227,7 @@ export default function App() {
   const [match, setMatch] = useState(null);
   const [attendees, setAttendees] = useState([]);
   const [lastMatch, setLastMatch] = useState(null);
+  const [birthdaysToday, setBirthdaysToday] = useState([]);
   const [teams, setTeams] = useState(null);
   const [scorers, setScorers] = useState([]);
   const [attStats, setAttStats] = useState([]);
@@ -292,15 +318,17 @@ export default function App() {
 
   const loadHome = async () => {
     try {
-      const [m, ps, last, anns, ml, gal] = await Promise.all([
+      const [m, ps, last, anns, ml, gal, birthdays] = await Promise.all([
         api.currentMatch(), api.listPlayers(), api.lastMatch(),
         api.listAnnouncements().catch(() => []),
         api.motmLast().catch(() => null),
         api.matchGallery().catch(() => []),
+        api.birthdaysToday().catch(() => []),
       ]);
       setMatch(m.match); setAttendees(m.attendees); setPlayers(ps); setLastMatch(last);
       setAnnouncements(anns); setMotmLast(ml);
       setGallery(gal);
+      setBirthdaysToday(Array.isArray(birthdays) ? birthdays : []);
       if (m.match?.id) {
         try { const r = await api.motmResults(m.match.id); setMotmResults(r); } catch { /* ignore */ }
       } else {
@@ -468,6 +496,7 @@ export default function App() {
             <HomePage
               tr={tr} lang={lang}
               currentUser={currentUser}
+              birthdaysToday={birthdaysToday}
               match={match} attendees={attendees} players={players} scorers={scorers} attStats={attStats} setSelectedPlayerCard={setSelectedPlayerCard} lastMatch={lastMatch}
               announcements={announcements} motmResults={motmResults} motmLast={motmLast}
               onRequireAuth={openAccountPage}
@@ -761,7 +790,7 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
   const [authMode, setAuthMode] = useState('login');
   const [name, setName] = useState('');
   const [pronoun, setPronoun] = useState('');
-  const [age, setAge] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -802,10 +831,14 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
 
   const submitRegister = async (e) => {
     e.preventDefault();
+    if (!isBirthDateComplete(birthDate)) {
+      setFeedback(tr('auth_birth_date_invalid'));
+      return;
+    }
     setRegisterBusy(true);
     setFeedback('');
     try {
-      await onRegister({ name, pronoun, age, email, phone, password, passwordConfirm });
+      await onRegister({ name, pronoun, birthDate, email, phone, password, passwordConfirm });
     } catch (error) {
       setFeedback(error.message);
     } finally {
@@ -847,6 +880,8 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
   }
 
   if (currentUser) {
+    const connectedBirthDate = formatBirthDateDisplay(currentUser.birthDate);
+
     return (
       <section className="panel account-page account-page-connected">
         <div className="account-stage">
@@ -878,7 +913,7 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
             />
             <div className="account-summary-grid">
               <div className="overview-chip"><strong>{currentUser.pronoun || '—'}</strong><span>{tr('auth_pronoun')}</span></div>
-              <div className="overview-chip"><strong>{currentUser.age || '—'}</strong><span>{tr('auth_age')}</span></div>
+              <div className="overview-chip"><strong>{connectedBirthDate}</strong><span>{tr('auth_birth_date')}</span></div>
               <div className="overview-chip"><strong>{currentUser.email || '—'}</strong><span>{tr('auth_email')}</span></div>
               <div className="overview-chip"><strong>{currentUser.phone || '—'}</strong><span>{tr('auth_phone')}</span></div>
             </div>
@@ -943,8 +978,15 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
                     <input value={pronoun} onChange={e => setPronoun(e.target.value)} required />
                   </div>
                   <div>
-                    <label>{tr('auth_age')}</label>
-                    <input type="number" min="10" max="99" value={age} onChange={e => setAge(e.target.value)} required />
+                    <label>{tr('auth_birth_date')}</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder={tr('auth_birth_date_ph')}
+                      value={birthDate}
+                      onChange={e => setBirthDate(formatBirthDateInput(e.target.value))}
+                      required
+                    />
                   </div>
                   <div>
                     <label>{tr('auth_phone')}</label>
@@ -1036,7 +1078,7 @@ function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
 /* ========================================================
    HOME / DASHBOARD
    ======================================================== */
-function HomePage({ tr, lang, currentUser, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onRequireAuth, onConfirm, onUnvote, onMotmVote }) {
+function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onRequireAuth, onConfirm, onUnvote, onMotmVote }) {
   const [presenceOpen, setPresenceOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
 
@@ -1050,6 +1092,9 @@ function HomePage({ tr, lang, currentUser, match, attendees, players, scorers, a
   const meetingTime = shiftClockTime(kickoffTime, -15);
   const lateFineHint = replaceTimeToken(tr('late_fine_sub'), kickoffTime);
   const matchNote = match?.notes?.trim();
+  const birthdayList = birthdaysToday.length
+    ? new Intl.ListFormat(localeFor(lang), { style: 'long', type: 'conjunction' }).format(birthdaysToday.map(player => player.name))
+    : '';
 
   const handleIntent = async (intent) => {
     if (!currentUser) {
@@ -1073,6 +1118,27 @@ function HomePage({ tr, lang, currentUser, match, attendees, players, scorers, a
   return (
     <>
       {lastMatch && <LastMatchCard tr={tr} lang={lang} lastMatch={lastMatch} />}
+
+      {birthdaysToday.length > 0 && (
+        <section className="panel birthday-banner">
+          <div className="birthday-banner-head">
+            <div>
+              <span className="birthday-kicker">{tr('birthday_today_label')}</span>
+              <h2>{tr('birthday_today_title')}</h2>
+            </div>
+            <span className="birthday-emoji">🎂</span>
+          </div>
+          <p className="birthday-copy">{tr('birthday_today_copy', { names: birthdayList })}</p>
+          <div className="birthday-players">
+            {birthdaysToday.map((player) => (
+              <div key={player.id} className="birthday-player-pill">
+                <strong>{player.name}</strong>
+                <span>{tr('birthday_today_age', { age: player.age })}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Vote « Joueur du jour » — visible quand un match est en cours */}
       <MotMSection

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS players (
   name        TEXT NOT NULL UNIQUE,
   pronoun     TEXT,
   age         INT CHECK (age IS NULL OR age BETWEEN 10 AND 99),
+  birth_date  DATE,
   email       TEXT,
   phone       TEXT,
   avatar_url  TEXT,

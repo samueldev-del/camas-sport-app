@@ -116,6 +116,56 @@ function normalizeAvatarUrl(value = '') {
   return trimmed;
 }
 
+function computeAgeFromBirthDate(value) {
+  const [year, month, day] = String(value).split('-').map(Number);
+  const today = new Date();
+  const todayYear = today.getUTCFullYear();
+  const todayMonth = today.getUTCMonth() + 1;
+  const todayDay = today.getUTCDate();
+
+  let age = todayYear - year;
+  if (todayMonth < month || (todayMonth === month && todayDay < day)) {
+    age -= 1;
+  }
+  return age;
+}
+
+function normalizeBirthDate(value = '') {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) {
+    throw new Error('Date de naissance invalide');
+  }
+
+  const [, day, month, year] = match;
+  const iso = `${year}-${month}-${day}`;
+  const date = new Date(`${iso}T00:00:00Z`);
+  const isValidDate = !Number.isNaN(date.getTime())
+    && date.getUTCFullYear() === Number(year)
+    && date.getUTCMonth() + 1 === Number(month)
+    && date.getUTCDate() === Number(day);
+
+  if (!isValidDate) {
+    throw new Error('Date de naissance invalide');
+  }
+
+  const computedAge = computeAgeFromBirthDate(iso);
+  if (computedAge < 10 || computedAge > 99) {
+    throw new Error('Date de naissance invalide');
+  }
+
+  return iso;
+}
+
+function formatBirthDate(value = null) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const digest = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -172,6 +222,7 @@ function serializePlayerAccount(player) {
     id: player.id,
     name: player.name,
     pronoun: player.pronoun,
+    birthDate: formatBirthDate(player.birth_date),
     age: player.age,
     email: player.email,
     phone: player.phone,
@@ -188,7 +239,7 @@ async function requirePlayerAuth(req, res, next) {
 
   try {
     const [player] = await sql`
-      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      SELECT id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin, password_hash
       FROM players
       WHERE id = ${payload.sub}
       LIMIT 1
@@ -218,6 +269,21 @@ function nextSundayBerlin() {
   const offset = days === 0 ? 0 : 7 - days;
   today.setUTCDate(today.getUTCDate() + offset);
   return today.toISOString().slice(0, 10);
+}
+
+function todayBerlinParts() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  return {
+    year: Number(parts.find(part => part.type === 'year')?.value || 0),
+    month: Number(parts.find(part => part.type === 'month')?.value || 0),
+    day: Number(parts.find(part => part.type === 'day')?.value || 0),
+  };
 }
 
 async function getOrCreateCurrentMatch() {
@@ -282,6 +348,7 @@ async function ensurePlayerAccountSchema() {
     await sql`ALTER TABLE players ALTER COLUMN pin DROP NOT NULL`;
     await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS pronoun TEXT`;
     await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS age INT CHECK (age IS NULL OR age BETWEEN 10 AND 99)`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS birth_date DATE`;
     await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS email TEXT`;
     await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS phone TEXT`;
     await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_url TEXT`;
@@ -303,7 +370,7 @@ app.post('/api/auth/register', async (req, res) => {
   await playerAccountsBootstrap;
 
   const {
-    name = '', pronoun = '', age,
+    name = '', pronoun = '', birthDate = '',
     email = '', phone = '',
     avatarUrl = '',
     password = '', passwordConfirm = '',
@@ -313,21 +380,21 @@ app.post('/api/auth/register', async (req, res) => {
   const cleanPronoun = pronoun.trim();
   const cleanEmail = normalizeEmail(email);
   const cleanPhone = normalizePhone(phone);
-  const parsedAge = Number.parseInt(age, 10);
   let cleanAvatarUrl;
+  let cleanBirthDate;
 
   try {
     cleanAvatarUrl = normalizeAvatarUrl(avatarUrl);
+    cleanBirthDate = normalizeBirthDate(birthDate);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
 
-  if (!cleanName || !cleanPronoun || Number.isNaN(parsedAge) || !cleanEmail || !cleanPhone || !password || !passwordConfirm) {
+  if (!cleanName || !cleanPronoun || !cleanBirthDate || !cleanEmail || !cleanPhone || !password || !passwordConfirm) {
     return res.status(400).json({ error: 'Tous les champs du compte sont requis' });
   }
   if (!isValidEmail(cleanEmail)) return res.status(400).json({ error: 'Adresse email invalide' });
   if (!isValidPhone(cleanPhone)) return res.status(400).json({ error: 'Numéro de téléphone invalide' });
-  if (parsedAge < 10 || parsedAge > 99) return res.status(400).json({ error: 'Âge invalide' });
   if (password.length < 8) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères' });
   if (password !== passwordConfirm) return res.status(400).json({ error: 'Les mots de passe ne correspondent pas' });
 
@@ -348,7 +415,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const passwordHash = hashPassword(password);
     const existingByName = await sql`
-      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      SELECT id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin, password_hash
       FROM players
       WHERE LOWER(name) = LOWER(${cleanName})
       LIMIT 1
@@ -362,19 +429,20 @@ app.post('/api/auth/register', async (req, res) => {
       rows = await sql`
         UPDATE players
         SET pronoun = ${cleanPronoun},
-            age = ${parsedAge},
+            birth_date = ${cleanBirthDate},
+            age = NULL,
             email = ${cleanEmail},
             phone = ${cleanPhone},
             avatar_url = ${cleanAvatarUrl},
             password_hash = ${passwordHash}
         WHERE id = ${existingByName[0].id}
-        RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+        RETURNING id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
       `;
     } else {
       rows = await sql`
-        INSERT INTO players (name, pronoun, age, email, phone, avatar_url, password_hash, rating)
-        VALUES (${cleanName}, ${cleanPronoun}, ${parsedAge}, ${cleanEmail}, ${cleanPhone}, ${cleanAvatarUrl}, ${passwordHash}, 5.0)
-        RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+        INSERT INTO players (name, pronoun, birth_date, email, phone, avatar_url, password_hash, rating)
+        VALUES (${cleanName}, ${cleanPronoun}, ${cleanBirthDate}, ${cleanEmail}, ${cleanPhone}, ${cleanAvatarUrl}, ${passwordHash}, 5.0)
+        RETURNING id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
       `;
     }
 
@@ -400,7 +468,7 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const rows = await sql`
-      SELECT id, name, pronoun, age, email, phone, avatar_url, rating, is_admin, password_hash
+      SELECT id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin, password_hash
       FROM players
       WHERE LOWER(email) = ${emailCandidate} OR phone = ${phoneCandidate}
       LIMIT 1
@@ -437,7 +505,7 @@ app.patch('/api/auth/me', requirePlayerAuth, async (req, res) => {
       UPDATE players
       SET avatar_url = ${cleanAvatarUrl}
       WHERE id = ${req.player.id}
-      RETURNING id, name, pronoun, age, email, phone, avatar_url, rating, is_admin
+      RETURNING id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
     `;
     res.json({ user: serializePlayerAccount(rows[0]) });
   } catch (error) {
@@ -450,6 +518,31 @@ app.patch('/api/auth/me', requirePlayerAuth, async (req, res) => {
 app.get('/api/players', async (_req, res) => {
   const rows = await sql`SELECT id, name, rating FROM players ORDER BY name`;
   res.json(rows);
+});
+
+app.get('/api/birthdays/today', async (_req, res) => {
+  const { month, day } = todayBerlinParts();
+
+  try {
+    const rows = await sql`
+      SELECT id, name, birth_date
+      FROM players
+      WHERE birth_date IS NOT NULL
+        AND EXTRACT(MONTH FROM birth_date) = ${month}
+        AND EXTRACT(DAY FROM birth_date) = ${day}
+      ORDER BY name ASC
+    `;
+
+    res.json(rows.map((player) => ({
+      id: player.id,
+      name: player.name,
+      birthDate: formatBirthDate(player.birth_date),
+      age: computeAgeFromBirthDate(player.birth_date),
+    })));
+  } catch (error) {
+    console.error('birthdays today error:', error);
+    res.status(500).json({ error: 'Erreur lecture anniversaires' });
+  }
 });
 
 app.post('/api/players', async (req, res) => {

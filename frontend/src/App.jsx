@@ -242,6 +242,7 @@ export default function App() {
   // Calendrier des matchs programmés (admin uniquement)
   const [calendar, setCalendar] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
   const [legal, setLegal] = useState(null);            // 'impressum' | 'privacy' | null
   const [cookieAck, setCookieAck] = useState(() => {
     try { return localStorage.getItem('camas_cookie_ack') === '1'; } catch { return true; }
@@ -340,13 +341,14 @@ export default function App() {
   const loadAdmin = async () => {
     if (!isAdmin) return;
     try {
-      const [f, c, a, cal, inv] = await Promise.all([
+      const [f, c, a, cal, inv, birthdays] = await Promise.all([
         api.fines(), api.caisse(),
         api.listAnnouncements().catch(() => []),
         api.matchCalendar().catch(() => []),
         api.inventory().catch(() => []),
+        api.birthdaysUpcoming().catch(() => []),
       ]);
-      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal); setInventory(inv);
+      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal); setInventory(inv); setUpcomingBirthdays(Array.isArray(birthdays) ? birthdays : []);
     } catch (e) { console.warn(e); }
   };
 
@@ -567,7 +569,7 @@ export default function App() {
                 tr={tr} lang={lang}
                 announcements={announcements} fines={fines} caisse={caisse}
                 players={players} match={match} motmResults={motmResults}
-                teams={teams} matchGoals={matchGoals} calendar={calendar} inventory={inventory}
+                teams={teams} matchGoals={matchGoals} calendar={calendar} inventory={inventory} upcomingBirthdays={upcomingBirthdays}
                 onLogout={onAdminLogout}
                 onAddAnnouncement={async (body, title, pinned) => {
                   try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash(tr('ann_published'), 'ok'); }
@@ -1081,6 +1083,8 @@ function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
 function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onRequireAuth, onConfirm, onUnvote, onMotmVote }) {
   const [presenceOpen, setPresenceOpen] = useState(false);
   const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
+  const birthdayLead = birthdaysToday[0] || null;
+  const isCurrentUserBirthday = !!currentUser && birthdaysToday.some((player) => player.id === currentUser.id);
 
   // Toujours 11 vs 11 — la logique de format auto a été retirée à la demande.
   const fmt = { type: tr('stadium'), format: '11 vs 11' };
@@ -1095,6 +1099,12 @@ function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, pla
   const birthdayList = birthdaysToday.length
     ? new Intl.ListFormat(localeFor(lang), { style: 'long', type: 'conjunction' }).format(birthdaysToday.map(player => player.name))
     : '';
+  const birthdayHeroTitle = isCurrentUserBirthday
+    ? tr('birthday_today_title_self', { name: currentUser.name.split(' ')[0] || currentUser.name })
+    : tr('birthday_today_title');
+  const birthdayHeroCopy = isCurrentUserBirthday
+    ? tr('birthday_today_copy_self')
+    : tr('birthday_today_copy', { names: birthdayList });
 
   const handleIntent = async (intent) => {
     if (!currentUser) {
@@ -1122,18 +1132,41 @@ function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, pla
       {birthdaysToday.length > 0 && (
         <section className="panel birthday-banner">
           <div className="birthday-banner-head">
-            <div>
+            <div className="birthday-banner-main">
               <span className="birthday-kicker">{tr('birthday_today_label')}</span>
-              <h2>{tr('birthday_today_title')}</h2>
+              <div className="birthday-banner-hero">
+                {(isCurrentUserBirthday ? currentUser : birthdayLead) && (
+                  <span className="birthday-avatar-shell">
+                    <img
+                      className="birthday-avatar"
+                      src={isCurrentUserBirthday ? (currentUser.avatarUrl || buildProfileAvatar(currentUser.name)) : buildProfileAvatar(birthdayLead.name)}
+                      alt={isCurrentUserBirthday ? currentUser.name : birthdayLead.name}
+                    />
+                  </span>
+                )}
+                <div>
+                  <h2>{birthdayHeroTitle}</h2>
+                  <p className="birthday-copy">{birthdayHeroCopy}</p>
+                  {isCurrentUserBirthday ? <p className="birthday-signature">{tr('birthday_today_signature')}</p> : null}
+                </div>
+              </div>
             </div>
-            <span className="birthday-emoji">🎂</span>
+            <div className="birthday-spotlight">
+              <span className="birthday-emoji">🎂</span>
+              <strong>{birthdaysToday.length}</strong>
+              <span>{tr('birthday_today_spotlight')}</span>
+            </div>
           </div>
-          <p className="birthday-copy">{tr('birthday_today_copy', { names: birthdayList })}</p>
           <div className="birthday-players">
             {birthdaysToday.map((player) => (
-              <div key={player.id} className="birthday-player-pill">
-                <strong>{player.name}</strong>
-                <span>{tr('birthday_today_age', { age: player.age })}</span>
+              <div key={player.id} className={`birthday-player-pill ${player.id === currentUser?.id ? 'is-current-user' : ''}`}>
+                <span className="birthday-player-avatar-shell">
+                  <img className="birthday-player-avatar" src={player.id === currentUser?.id ? (currentUser.avatarUrl || buildProfileAvatar(player.name)) : buildProfileAvatar(player.name)} alt={player.name} />
+                </span>
+                <div className="birthday-player-copy">
+                  <strong>{player.name}</strong>
+                  <span>{tr('birthday_today_age', { age: player.age })}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -1870,7 +1903,7 @@ function StatsPage({ tr, scorers, attendance }) {
 function AdminDashboard({
   tr, lang,
   announcements, fines, caisse, players,
-  match, motmResults, teams, matchGoals, calendar, inventory,
+  match, motmResults, teams, matchGoals, calendar, inventory, upcomingBirthdays,
   onLogout,
   onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
   onPay, onAddExpense, onAddFine,
@@ -1885,6 +1918,11 @@ function AdminDashboard({
   const readyUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_ready || 0), 0);
   const totalUnits = inventory.reduce((sum, item) => sum + Number(item.quantity_total || 0), 0);
   const readyRatio = totalUnits ? Math.round((readyUnits / totalUnits) * 100) : 100;
+  const describeUpcomingBirthday = (item) => {
+    if (item.daysUntil === 0) return tr('admin_birthdays_today');
+    if (item.daysUntil === 1) return tr('admin_birthdays_tomorrow');
+    return tr('admin_birthdays_in_days', { days: item.daysUntil });
+  };
 
   return (
     <>
@@ -1913,6 +1951,34 @@ function AdminDashboard({
             <strong>{readyRatio}%</strong>
             <span>{tr('admin_kpi_inventory')}</span>
           </article>
+        </div>
+        <div className="admin-birthday-card">
+          <div className="admin-birthday-card-head">
+            <div>
+              <span className="admin-birthday-kicker">{tr('admin_birthdays_label')}</span>
+              <h3>{tr('admin_birthdays_title')}</h3>
+              <p>{tr('admin_birthdays_intro')}</p>
+            </div>
+            <strong className="admin-birthday-count">{upcomingBirthdays.length}</strong>
+          </div>
+          {upcomingBirthdays.length > 0 ? (
+            <div className="admin-birthday-list">
+              {upcomingBirthdays.slice(0, 6).map((item) => (
+                <article key={item.id} className="admin-birthday-item">
+                  <span className="admin-birthday-avatar-shell">
+                    <img className="admin-birthday-avatar" src={buildProfileAvatar(item.name)} alt={item.name} />
+                  </span>
+                  <div className="admin-birthday-copy">
+                    <strong>{item.name}</strong>
+                    <span>{fmtShortDate(item.nextOccurrence, lang)} · {tr('admin_birthdays_turns', { age: item.turnsAge })}</span>
+                  </div>
+                  <em>{describeUpcomingBirthday(item)}</em>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="admin-birthday-empty">{tr('admin_birthdays_empty')}</p>
+          )}
         </div>
         <div className="admin-tabs">
           <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>{tr('admin_tab_match')}</button>

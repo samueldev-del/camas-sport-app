@@ -86,6 +86,7 @@ export const api = {
 
   currentMatch:    () => req('/api/match/current'),
   birthdaysToday:  () => req('/api/birthdays/today'),
+  birthdaysUpcoming: () => req('/api/birthdays/upcoming'),
   lastMatch:       () => req('/api/match/last'),
 
   // Nouveau format: intent = 'yes' | 'maybe' | 'no'. position requis si intent === 'yes'.

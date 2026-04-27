@@ -286,6 +286,38 @@ function todayBerlinParts() {
   };
 }
 
+function isLeapYear(year) {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+function birthdayOccurrenceForYear(month, day, year) {
+  if (month === 2 && day === 29 && !isLeapYear(year)) {
+    return new Date(Date.UTC(year, 1, 28));
+  }
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function upcomingBirthdayInfo(value, today = todayBerlinParts()) {
+  const [year, month, day] = String(value).split('-').map(Number);
+  if (!year || !month || !day) return null;
+
+  const todayDate = new Date(Date.UTC(today.year, today.month - 1, today.day));
+  let occurrenceYear = today.year;
+  let occurrence = birthdayOccurrenceForYear(month, day, occurrenceYear);
+
+  if (occurrence < todayDate) {
+    occurrenceYear += 1;
+    occurrence = birthdayOccurrenceForYear(month, day, occurrenceYear);
+  }
+
+  const daysUntil = Math.round((occurrence - todayDate) / 86400000);
+  return {
+    nextOccurrence: occurrence.toISOString().slice(0, 10),
+    daysUntil,
+    turnsAge: occurrenceYear - year,
+  };
+}
+
 async function getOrCreateCurrentMatch() {
   const date = nextSundayBerlin();
   const existing = await sql`SELECT * FROM matches WHERE match_date = ${date} LIMIT 1`;
@@ -542,6 +574,38 @@ app.get('/api/birthdays/today', async (_req, res) => {
   } catch (error) {
     console.error('birthdays today error:', error);
     res.status(500).json({ error: 'Erreur lecture anniversaires' });
+  }
+});
+
+app.get('/api/birthdays/upcoming', requireAdmin, async (_req, res) => {
+  try {
+    const rows = await sql`
+      SELECT id, name, birth_date
+      FROM players
+      WHERE birth_date IS NOT NULL
+      ORDER BY name ASC
+    `;
+
+    const upcoming = rows
+      .map((player) => {
+        const info = upcomingBirthdayInfo(player.birth_date);
+        if (!info || info.daysUntil < 0 || info.daysUntil > 7) return null;
+        return {
+          id: player.id,
+          name: player.name,
+          birthDate: formatBirthDate(player.birth_date),
+          nextOccurrence: info.nextOccurrence,
+          daysUntil: info.daysUntil,
+          turnsAge: info.turnsAge,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.daysUntil - right.daysUntil || left.name.localeCompare(right.name));
+
+    res.json(upcoming);
+  } catch (error) {
+    console.error('birthdays upcoming error:', error);
+    res.status(500).json({ error: 'Erreur lecture anniversaires à venir' });
   }
 });
 

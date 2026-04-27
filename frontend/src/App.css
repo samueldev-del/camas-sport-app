@@ -3004,6 +3004,11 @@ h1, h2, h3, h4 {
   gap: 14px;
 }
 
+.birthday-banner-main {
+  display: grid;
+  gap: 10px;
+}
+
 .birthday-kicker {
   display: inline-flex;
   margin-bottom: 8px;
@@ -3023,15 +3028,69 @@ h1, h2, h3, h4 {
   color: #fff;
 }
 
+.birthday-banner-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.birthday-avatar-shell,
+.birthday-player-avatar-shell,
+.admin-birthday-avatar-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.26), rgba(231, 186, 58, 0.55));
+}
+
+.birthday-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 21px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.94);
+}
+
 .birthday-emoji {
   font-size: 2rem;
   line-height: 1;
+}
+
+.birthday-spotlight {
+  min-width: 108px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.birthday-spotlight strong {
+  font-size: 1.6rem;
+  color: #fff;
+}
+
+.birthday-spotlight span:last-child {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.74rem;
+  text-align: center;
 }
 
 .birthday-copy {
   margin: 0;
   color: rgba(255, 255, 255, 0.84);
   max-width: 52ch;
+}
+
+.birthday-signature {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.84rem;
+  max-width: 44ch;
 }
 
 .birthday-players {
@@ -3041,8 +3100,9 @@ h1, h2, h3, h4 {
 }
 
 .birthday-player-pill {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 140px;
   padding: 12px 14px;
   border-radius: 18px;
@@ -3051,13 +3111,128 @@ h1, h2, h3, h4 {
   backdrop-filter: blur(10px);
 }
 
+.birthday-player-pill.is-current-user {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 12px 24px rgba(7, 30, 21, 0.18);
+}
+
 .birthday-player-pill strong {
   color: #fff;
+}
+
+.birthday-player-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.birthday-player-copy {
+  display: grid;
+  gap: 3px;
 }
 
 .birthday-player-pill span {
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.82rem;
+}
+
+.admin-birthday-card {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.admin-birthday-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.admin-birthday-kicker {
+  display: inline-flex;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-birthday-card h3 {
+  margin: 0;
+  color: #fff;
+}
+
+.admin-birthday-card p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.admin-birthday-count {
+  min-width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.admin-birthday-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-birthday-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-birthday-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.admin-birthday-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-birthday-copy strong {
+  color: #fff;
+}
+
+.admin-birthday-copy span,
+.admin-birthday-item em,
+.admin-birthday-empty {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.82rem;
+}
+
+.admin-birthday-item em {
+  font-style: normal;
+  white-space: nowrap;
 }
 
 .motm-section {
@@ -3076,11 +3251,33 @@ h1, h2, h3, h4 {
   }
 
   .birthday-banner-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .birthday-banner-hero {
+    align-items: flex-start;
+  }
+
+  .birthday-spotlight {
+    width: 100%;
+    grid-template-columns: auto auto 1fr;
+    justify-items: start;
     align-items: center;
+    gap: 10px;
   }
 
   .birthday-players {
     flex-direction: column;
+  }
+
+  .admin-birthday-card-head,
+  .admin-birthday-item {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-birthday-count {
+    width: fit-content;
   }
 
   .caisse-balance { font-size: 1.7rem; }
@@ -4764,18 +4961,51 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  .header {
+    gap: 12px;
+  }
+
+  .header-meta {
+    display: grid;
+    flex: 1 1 100%;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .brand-line {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .header-tools {
+    width: 100%;
+    justify-content: space-between;
+    order: 3;
+  }
+
   .top-nav.mobile-bottom {
     display: grid !important;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    position: fixed !important;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 200;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    position: static !important;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: auto;
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   }
 
   .top-nav.mobile-bottom .nav-tab {
     width: 100%;
+    min-height: 54px;
+  }
+
+  .content {
+    padding: 14px;
   }
 
   .account-chip {
@@ -4837,6 +5067,48 @@ textarea:focus {
   .account-switch-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 980px) {
+  .header {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .header-meta {
+    order: 2;
+    flex: 1 1 100%;
+    display: grid;
+    gap: 12px;
+  }
+
+  .header-tools {
+    margin-left: auto;
+  }
+
+  .top-nav.mobile-bottom {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+    padding: 6px;
+    border-radius: 18px;
+    background: rgba(8, 39, 28, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  .top-nav.mobile-bottom .nav-tab {
+    min-width: 0;
+    border-radius: 12px;
+    border-bottom: 0;
+    padding: 10px 4px;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .top-nav.mobile-bottom .nav-tab.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
   }
 }
 

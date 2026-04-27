@@ -125,8 +125,12 @@ const FR = {
   status_dash:      '—',
   birthday_today_label:'CAMAS Birthday Club',
   birthday_today_title:'Anniversaire du jour',
+  birthday_today_title_self:'Joyeux anniversaire {name}',
   birthday_today_copy:'Aujourd’hui, toute l’équipe pousse derrière {names}.',
+  birthday_today_copy_self:'Aujourd’hui, le groupe joue aussi pour toi. On célèbre ta journée avec l’énergie CAMAS du vestiaire au terrain.',
   birthday_today_age:'{age} ans aujourd\'hui',
+  birthday_today_spotlight:'à célébrer aujourd\'hui',
+  birthday_today_signature:'Ton match du jour commence déjà avec toute la force de l’équipe derrière toi.',
 
   // Player picker
   who_confirms:     'Qui s\'inscrit ?',
@@ -464,6 +468,14 @@ const FR = {
   admin_kpi_plan:       'Matchs planifiés',
   admin_kpi_due:        'Amendes dues',
   admin_kpi_inventory:  'Articles prêts',
+  admin_birthdays_label:'Anniversaires',
+  admin_birthdays_title:'À venir cette semaine',
+  admin_birthdays_intro:'Repère les joueurs à féliciter sur les 7 prochains jours.',
+  admin_birthdays_empty:'Aucun anniversaire sur les 7 prochains jours.',
+  admin_birthdays_today:'Aujourd\'hui',
+  admin_birthdays_tomorrow:'Demain',
+  admin_birthdays_in_days:'Dans {days} jours',
+  admin_birthdays_turns:'{age} ans',
 
   // Admin Match panel — extras
   admin_match_score_title: 'Score final',
@@ -624,8 +636,12 @@ const DE = {
   status_dash:      '—',
   birthday_today_label:'CAMAS Birthday Club',
   birthday_today_title:'Geburtstag des Tages',
+  birthday_today_title_self:'Alles Gute zum Geburtstag, {name}',
   birthday_today_copy:'Heute feuert das ganze Team {names} an.',
+  birthday_today_copy_self:'Heute spielt die ganze Gruppe auch für dich. Wir feiern deinen Tag mit echter CAMAS-Energie vom Kabinengang bis auf den Platz.',
   birthday_today_age:'heute {age} Jahre',
+  birthday_today_spotlight:'heute zu feiern',
+  birthday_today_signature:'Dein Spieltag beginnt heute schon mit voller Teamenergie an deiner Seite.',
 
   // Player picker
   who_confirms:     'Wer meldet sich an?',
@@ -953,6 +969,14 @@ const DE = {
   admin_kpi_plan:       'Geplante Spiele',
   admin_kpi_due:        'Offene Strafen',
   admin_kpi_inventory:  'Bereite Artikel',
+  admin_birthdays_label:'Geburtstage',
+  admin_birthdays_title:'In dieser Woche',
+  admin_birthdays_intro:'Behalte im Blick, wem du in den nächsten 7 Tagen gratulieren solltest.',
+  admin_birthdays_empty:'Keine Geburtstage in den nächsten 7 Tagen.',
+  admin_birthdays_today:'Heute',
+  admin_birthdays_tomorrow:'Morgen',
+  admin_birthdays_in_days:'In {days} Tagen',
+  admin_birthdays_turns:'{age} Jahre',
 
   admin_match_score_title: 'Endergebnis',
   admin_match_goals_title: 'Torschützen des Tages',

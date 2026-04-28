@@ -3983,6 +3983,19 @@ textarea:focus {
   scroll-margin-top: 12px;
 }
 
+.quick-choice-sheet .pp-intro {
+  padding: 0 20px;
+}
+
+.quick-choice-sheet .position-picker.compact {
+  padding: 0 20px;
+}
+
+.quick-choice-sheet .row-actions {
+  padding: 8px 20px 4px;
+  margin-top: 4px;
+}
+
 .choice-switch {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5081,13 +5094,35 @@ textarea:focus {
     z-index: 1;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 246, 0.94));
     backdrop-filter: blur(10px);
+    padding: 8px 16px 12px;
+  }
+
+  .quick-choice-sheet .sheet-head h3 {
+    font-size: 1rem;
+  }
+
+  .quick-choice-sheet .pp-intro {
+    padding: 0 16px;
+    font-size: 0.88rem;
+    line-height: 1.4;
+  }
+
+  .quick-choice-sheet .position-picker.compact {
+    padding: 0 16px;
   }
 
   .quick-choice-sheet .row-actions {
     position: sticky;
     bottom: 0;
-    padding-top: 12px;
+    padding: 12px 16px calc(8px + var(--safe-bottom));
+    margin-top: 4px;
     background: linear-gradient(180deg, rgba(245, 249, 246, 0), rgba(245, 249, 246, 0.96) 22%);
+    flex-wrap: wrap;
+  }
+
+  .quick-choice-sheet .row-actions button {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
   }
 
   .quick-choice-sheet .btn-primary,
@@ -5097,10 +5132,21 @@ textarea:focus {
 
   .quick-choice-sheet .position-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .quick-choice-sheet .pos-card {
-    min-height: 82px;
+    min-height: 76px;
+    padding: 12px 8px;
+  }
+
+  .quick-choice-sheet .pos-card .pos-code {
+    font-size: 1.25rem;
+  }
+
+  .quick-choice-sheet .pos-card .pos-name {
+    font-size: 0.68rem;
+    text-align: center;
   }
 
   .player-status-table,
@@ -5672,5 +5718,59 @@ textarea:focus {
 
   .mobile-profile-menu-link {
     padding: 12px 13px;
+  }
+}
+
+/* ================================================
+   MOBILE PERFORMANCE — disable expensive GPU effects
+   ================================================ */
+@media (max-width: 900px) {
+  /* backdrop-filter: blur() est très coûteux sur GPU mobile */
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Réduit les animations longues qui consomment du CPU */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+  }
+
+  /* Réactive uniquement les courtes transitions utiles à l'UX */
+  .pos-card,
+  .nav-tab,
+  .btn-primary,
+  .btn-ghost,
+  .choice-switch-btn {
+    animation-duration: initial !important;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Allège les ombres complexes sur mobile */
+  .panel,
+  .sheet,
+  .account-shell,
+  .admin-card,
+  .teams-showcase {
+    box-shadow: 0 4px 12px rgba(14, 42, 30, 0.08) !important;
+  }
+
+  /* Désactive les transformations 3D coûteuses au scroll */
+  .pos-card:hover,
+  .player-tile:hover,
+  .nav-tab:hover {
+    transform: none !important;
+  }
+
+  /* will-change peut consommer mémoire — supprime si non critique */
+  .header,
+  .panel,
+  .sheet {
+    will-change: auto !important;
   }
 }

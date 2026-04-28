@@ -55,7 +55,7 @@ function PlayerCardModal({ player, onClose }) {
   );
 }
 
-function MobileProfileMenu({ tr, currentUser, isAdmin, currentTab, tabs, onClose, onSelectTab, onPlayerLogout, onAdminLogout }) {
+function MobileProfileMenu({ tr, currentUser, isAdmin, currentTab, tabs, onClose, onSelectTab, onOpenAdminLogin, onPlayerLogout, onAdminLogout }) {
   const menuTabs = [
     { id: 'account', icon: '👤', key: currentUser ? 'auth_profile' : 'auth_login_short', locked: false },
     ...tabs.map((tab) => ({ ...tab, locked: tab.adminOnly && !isAdmin })),
@@ -88,7 +88,13 @@ function MobileProfileMenu({ tr, currentUser, isAdmin, currentTab, tabs, onClose
                 key={item.id}
                 type="button"
                 className={`mobile-profile-menu-link ${currentTab === item.id ? 'active' : ''} ${item.locked ? 'locked' : ''}`}
-                onClick={() => onSelectTab(item.id)}
+                onClick={() => {
+                  if (item.id === 'admin' && item.locked) {
+                    onOpenAdminLogin();
+                    return;
+                  }
+                  onSelectTab(item.id);
+                }}
                 title={item.locked ? tr('admin_locked') : ''}
               >
                 <span className="mobile-profile-menu-icon">{item.icon}{item.locked ? ' 🔒' : ''}</span>
@@ -374,6 +380,12 @@ export default function App() {
     flash(tr('admin_logout'), 'ok');
   };
 
+  const openAdminLogin = () => {
+    setTab('admin');
+    setMobileProfileMenuOpen(false);
+    setAdminModalOpen(true);
+  };
+
   const openAccountPage = (messageKey = 'auth_required') => {
     if (messageKey === 'auth_go_home_prompt') {
       setTab('home');
@@ -568,7 +580,13 @@ export default function App() {
                 <button
                   key={tt.id}
                   className={`nav-tab ${tab === tt.id ? 'active' : ''} ${tt.adminOnly && !isAdmin ? 'locked' : ''}`}
-                  onClick={() => setTab(tt.id)}
+                  onClick={() => {
+                    if (tt.id === 'admin' && !isAdmin) {
+                      openAdminLogin();
+                      return;
+                    }
+                    setTab(tt.id);
+                  }}
                   title={tt.adminOnly && !isAdmin ? tr('admin_locked') : ''}
                 >
                   <span className="nav-ic">{tt.icon}{tt.adminOnly && !isAdmin ? <span className="lock-mini">🔒</span> : null}</span>
@@ -747,7 +765,7 @@ export default function App() {
                 onUpdateMatch={onUpdateMatch}
               />
             ) : (
-              <LockedSection tr={tr} onUnlock={() => setAdminModalOpen(true)} />
+              <LockedSection tr={tr} onUnlock={openAdminLogin} />
             )
           )}
 
@@ -817,6 +835,7 @@ export default function App() {
           tabs={visibleTabs}
           onClose={() => setMobileProfileMenuOpen(false)}
           onSelectTab={goToTab}
+          onOpenAdminLogin={openAdminLogin}
           onPlayerLogout={onPlayerLogout}
           onAdminLogout={onAdminLogout}
         />

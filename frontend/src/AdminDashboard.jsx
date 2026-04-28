@@ -4,13 +4,14 @@ import { buildProfileAvatar, DEFAULT_KICKOFF, fmtShortDate } from './appShared';
 export default function AdminDashboard({
   tr, lang,
   announcements, fines, caisse, players,
-  match, motmResults, teams, matchGoals, calendar, inventory, upcomingBirthdays,
+  match, motmResults, teams, matchGoals, calendar, inventory, upcomingBirthdays, registrations,
   onLogout,
   onAddAnnouncement, onDeleteAnnouncement, onTogglePin,
   onPay, onAddExpense, onAddFine,
   onSaveScore, onAddGoal, onSetMatchPhoto,
   onScheduleMatch, onDeleteMatch,
   onAddInventoryItem, onUpdateInventoryItem, onDeleteInventoryItem,
+  onRevokeRegistration,
   onUpdateMatch,
 }) {
   const [section, setSection] = useState('match');
@@ -85,6 +86,7 @@ export default function AdminDashboard({
         <div className="admin-tabs">
           <button className={`admin-tab ${section === 'match' ? 'active' : ''}`} onClick={() => setSection('match')}>{tr('admin_tab_match')}</button>
           <button className={`admin-tab ${section === 'ann' ? 'active' : ''}`} onClick={() => setSection('ann')}>{tr('admin_tab_ann')}</button>
+          <button className={`admin-tab ${section === 'users' ? 'active' : ''}`} onClick={() => setSection('users')}>{tr('admin_tab_users')}</button>
           <button className={`admin-tab ${section === 'plan' ? 'active' : ''}`} onClick={() => setSection('plan')}>{tr('admin_tab_plan')}</button>
           <button className={`admin-tab ${section === 'cash' ? 'active' : ''}`} onClick={() => setSection('cash')}>{tr('admin_tab_cash')}</button>
           <button className={`admin-tab ${section === 'gear' ? 'active' : ''}`} onClick={() => setSection('gear')}>{tr('admin_tab_inventory')}</button>
@@ -118,6 +120,14 @@ export default function AdminDashboard({
           onAdd={onAddAnnouncement}
           onDelete={onDeleteAnnouncement}
           onTogglePin={onTogglePin}
+        />
+      )}
+
+      {section === 'users' && (
+        <AdminRegistrationsPanel
+          tr={tr}
+          registrations={registrations}
+          onRevokeRegistration={onRevokeRegistration}
         />
       )}
 
@@ -209,10 +219,10 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxWidth = 800;
-        const scaleSize = maxWidth / img.width;
-        canvas.width = maxWidth;
-        canvas.height = img.height * scaleSize;
+        const maxSide = 1200;
+        const scaleSize = Math.min(1, maxSide / Math.max(img.width, img.height));
+        canvas.width = Math.round(img.width * scaleSize);
+        canvas.height = Math.round(img.height * scaleSize);
 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -240,7 +250,7 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
             <label>{tr('team_b')}</label>
             <input type="number" min="0" max="99" value={scoreB} onChange={(event) => setScoreB(event.target.value)} placeholder="0" />
           </div>
-          <button type="submit" className="btn-primary">{tr('save_score')}</button>
+          <button type="submit" className="btn-primary btn-save">{tr('save_score')}</button>
         </form>
       </section>
 
@@ -254,7 +264,7 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
             ))}
           </select>
           <input type="number" min="1" max="10" value={goalCount} onChange={(event) => setGoalCount(event.target.value)} />
-          <button className="btn-primary" type="submit">{tr('add_goal')}</button>
+          <button className="btn-primary btn-save" type="submit">{tr('add_goal')}</button>
         </form>
         {(matchGoals || []).length === 0 ? (
           <p className="empty-row">{tr('no_goals_yet')}</p>
@@ -296,11 +306,11 @@ function AdminMatchPanel({ tr, lang, match, teams, matchGoals, motmResults, play
 
           {photoUrl && (
             <div className="photo-preview" style={{ textAlign: 'center', marginBottom: '15px' }}>
-              <img src={photoUrl} alt="preview" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '300px', objectFit: 'cover' }} onError={(event) => { event.target.style.display = 'none'; }} />
+              <img src={photoUrl} alt="preview" style={{ width: '100%', borderRadius: '10px', maxHeight: '360px', objectFit: 'contain', background: '#0d1f19', aspectRatio: '16 / 10' }} onError={(event) => { event.target.style.display = 'none'; }} />
             </div>
           )}
           <div className="row-actions">
-            <button type="submit" className="btn-primary" disabled={!photoUrl.trim()}>{tr('admin_match_photo_save')}</button>
+            <button type="submit" className="btn-primary btn-save" disabled={!photoUrl.trim()}>{tr('admin_match_photo_save')}</button>
           </div>
         </form>
       </section>
@@ -423,7 +433,7 @@ function AdminPlanningPanel({ tr, lang, calendar, onSchedule, onDelete }) {
           <label>{tr('admin_plan_notes')}</label>
           <input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={tr('admin_plan_notes_ph')} />
           <div className="row-actions">
-            <button type="submit" className="btn-primary" disabled={!date}>{tr('admin_plan_save')}</button>
+            <button type="submit" className="btn-primary btn-save" disabled={!date}>{tr('admin_plan_save')}</button>
           </div>
         </form>
       </section>
@@ -524,7 +534,7 @@ function InventoryEditorModal({ tr, item, onClose, onSubmit }) {
           <textarea className="ann-textarea" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
           <div className="row-actions">
             <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
-            <button type="submit" className="btn-primary">{tr('inventory_save')}</button>
+            <button type="submit" className="btn-primary btn-save">{tr('inventory_save')}</button>
           </div>
         </form>
       </div>
@@ -619,7 +629,7 @@ function AdminInventoryPanel({ tr, inventory, onAdd, onUpdate, onDelete }) {
             </div>
           </div>
           <div className="row-actions inventory-form-actions">
-            <button type="submit" className="btn-primary" disabled={!category.trim() || !name.trim()}>{tr('inventory_add')}</button>
+            <button type="submit" className="btn-primary btn-save" disabled={!category.trim() || !name.trim()}>{tr('inventory_add')}</button>
           </div>
         </form>
       </section>
@@ -795,7 +805,7 @@ function ManualFineModal({ tr, players, onClose, onSubmit }) {
           <input type="number" min="0" step="0.5" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="2.00" />
           <div className="row-actions">
             <button type="button" className="btn-ghost" onClick={onClose}>{tr('cancel')}</button>
-            <button type="submit" className="btn-primary" disabled={busy || !pid || !reason.trim() || !amount}>{busy ? '…' : tr('save')}</button>
+            <button type="submit" className="btn-primary btn-save" disabled={busy || !pid || !reason.trim() || !amount}>{busy ? '…' : tr('save')}</button>
           </div>
         </form>
       </div>
@@ -831,7 +841,67 @@ function AdminMatchSettings({ tr, match, onUpdateMatch }) {
       <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
       <input type="time" value={kickoff} onChange={(event) => setKickoff(event.target.value)} />
       <input type="text" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={tr('admin_plan_notes_ph')} />
-      <button type="submit" className="btn-primary" disabled={busy}>{busy ? '…' : '💾'}</button>
+      <button type="submit" className="btn-primary btn-save" disabled={busy}>{busy ? '…' : tr('admin_save_btn')}</button>
     </form>
+  );
+}
+
+function AdminRegistrationsPanel({ tr, registrations, onRevokeRegistration }) {
+  return (
+    <section className="panel admin-card">
+      <div className="panel-head"><h2>{tr('admin_users_title')}</h2></div>
+      {(!registrations || registrations.length === 0) ? (
+        <p className="empty-row">{tr('admin_users_empty')}</p>
+      ) : (
+        <div className="stats-table-wrap">
+          <table className="presences-table admin-users-table">
+            <thead>
+              <tr>
+                <th>{tr('th_player')}</th>
+                <th>{tr('auth_pronoun')}</th>
+                <th>{tr('auth_birth_date')}</th>
+                <th>{tr('auth_age')}</th>
+                <th>{tr('auth_email')}</th>
+                <th>{tr('auth_phone')}</th>
+                <th>{tr('th_status')}</th>
+                <th>{tr('th_action')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {registrations.map((player) => (
+                <tr key={player.id}>
+                  <td data-label={tr('th_player')}>
+                    <div className="player-identity">
+                      <img className="player-avatar" src={player.avatarUrl || buildProfileAvatar(player.name)} alt={player.name} loading="lazy" decoding="async" />
+                      <div className="player-meta">
+                        <span>{player.name}</span>
+                        {player.isAdmin ? <span className="mini-tag self-tag">ADMIN</span> : null}
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label={tr('auth_pronoun')}>{player.pronoun || '—'}</td>
+                  <td data-label={tr('auth_birth_date')}>{player.birthDate || '—'}</td>
+                  <td data-label={tr('auth_age')}>{player.age || '—'}</td>
+                  <td data-label={tr('auth_email')}>{player.email || '—'}</td>
+                  <td data-label={tr('auth_phone')}>{player.phone || '—'}</td>
+                  <td data-label={tr('th_status')}>
+                    <span className={`badge ${player.hasAccount ? 'badge-green' : 'badge-muted'}`}>
+                      {player.hasAccount ? tr('admin_users_status_registered') : tr('admin_users_status_not_registered')}
+                    </span>
+                  </td>
+                  <td data-label={tr('th_action')}>
+                    {!player.isAdmin && player.hasAccount ? (
+                      <button className="btn-ghost btn-choice-edit" onClick={() => onRevokeRegistration(player.id)}>{tr('admin_revoke_btn')}</button>
+                    ) : (
+                      <span className="muted-txt">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

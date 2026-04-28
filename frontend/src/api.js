@@ -163,4 +163,8 @@ export const api = {
   updateMatch:     (id, data) => req(`/api/match/${id}`, { method: 'PATCH', body: data }),
   updateMatchPhoto: (id, photoUrl, winnerTeam) =>
     req(`/api/match/${id}/photo`, { method: 'PATCH', body: { photoUrl, winnerTeam } }),
+
+  adminRegistrations: () => req('/api/admin/registrations'),
+  adminRevokeRegistration: (id) => req(`/api/admin/registrations/${id}/revoke`, { method: 'POST' }),
+  adminRevokeAttendance: (playerId, matchId) => req('/api/admin/attendance/revoke', { method: 'POST', body: { playerId, matchId } }),
 };

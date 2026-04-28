@@ -339,6 +339,11 @@ function todayBerlinParts() {
   };
 }
 
+function todayBerlinISO() {
+  const { year, month, day } = todayBerlinParts();
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function isLeapYear(year) {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
@@ -373,10 +378,27 @@ function upcomingBirthdayInfo(value, today = todayBerlinParts()) {
 
 async function getOrCreateCurrentMatch() {
   await matchSchemaBootstrap;
-  const date = nextSundayBerlin();
-  const existing = await sql`SELECT * FROM matches WHERE match_date = ${date} LIMIT 1`;
-  if (existing.length) return existing[0];
-  const created = await sql`INSERT INTO matches (match_date) VALUES (${date}) RETURNING *`;
+  const today = todayBerlinISO();
+
+  const upcoming = await sql`
+    SELECT *
+    FROM matches
+    WHERE status <> 'done' AND match_date >= ${today}
+    ORDER BY match_date ASC
+    LIMIT 1
+  `;
+  if (upcoming.length) return upcoming[0];
+
+  const open = await sql`
+    SELECT *
+    FROM matches
+    WHERE status <> 'done'
+    ORDER BY match_date DESC
+    LIMIT 1
+  `;
+  if (open.length) return open[0];
+
+  const created = await sql`INSERT INTO matches (match_date) VALUES (${today}) RETURNING *`;
   return created[0];
 }
 
@@ -703,6 +725,94 @@ app.get('/api/players', async (_req, res) => {
   res.json(rows);
 });
 
+app.get('/api/admin/registrations', requireAdmin, async (_req, res) => {
+  await playerAccountsBootstrap;
+  try {
+    const rows = await sql`
+      SELECT
+        id,
+        name,
+        pronoun,
+        birth_date,
+        age,
+        email,
+        phone,
+        avatar_url,
+        is_admin,
+        created_at,
+        CASE WHEN COALESCE(password_hash, '') <> '' THEN TRUE ELSE FALSE END AS has_account
+      FROM players
+      ORDER BY created_at DESC, name ASC
+    `;
+
+    res.json(rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      pronoun: row.pronoun || null,
+      birthDate: formatBirthDate(row.birth_date),
+      age: row.age,
+      email: row.email || null,
+      phone: row.phone || null,
+      avatarUrl: row.avatar_url || null,
+      isAdmin: !!row.is_admin,
+      hasAccount: !!row.has_account,
+      createdAt: row.created_at,
+    })));
+  } catch (error) {
+    console.error('admin registrations error:', error);
+    res.status(500).json({ error: 'Erreur lecture inscriptions' });
+  }
+});
+
+app.post('/api/admin/registrations/:id/revoke', requireAdmin, async (req, res) => {
+  await playerAccountsBootstrap;
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+
+  try {
+    const [current] = await sql`SELECT id, is_admin FROM players WHERE id = ${id} LIMIT 1`;
+    if (!current) return res.status(404).json({ error: 'Joueur introuvable' });
+    if (current.is_admin) {
+      return res.status(400).json({ error: 'Impossible de révoquer un compte admin' });
+    }
+
+    await sql`
+      UPDATE players
+      SET pronoun = NULL,
+          birth_date = NULL,
+          age = NULL,
+          email = NULL,
+          phone = NULL,
+          avatar_url = NULL,
+          password_hash = NULL
+      WHERE id = ${id}
+    `;
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('admin revoke registration error:', error);
+    res.status(500).json({ error: 'Erreur révocation inscription' });
+  }
+});
+
+app.post('/api/admin/attendance/revoke', requireAdmin, async (req, res) => {
+  const playerId = Number.parseInt(req.body?.playerId, 10);
+  const explicitMatchId = Number.parseInt(req.body?.matchId, 10);
+  if (Number.isNaN(playerId)) return res.status(400).json({ error: 'playerId requis' });
+
+  try {
+    const matchId = Number.isNaN(explicitMatchId)
+      ? (await getOrCreateCurrentMatch()).id
+      : explicitMatchId;
+
+    await sql`DELETE FROM attendances WHERE match_id = ${matchId} AND player_id = ${playerId}`;
+    await sql`DELETE FROM fines WHERE match_id = ${matchId} AND player_id = ${playerId} AND paid = FALSE`;
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('admin revoke attendance error:', error);
+    res.status(500).json({ error: 'Erreur révocation présence' });
+  }
+});
+
 app.get('/api/birthdays/today', async (_req, res) => {
   const { month, day } = todayBerlinParts();
 
@@ -813,13 +923,16 @@ app.get('/api/match/current', async (_req, res) => {
 // Modifier la date ou l'heure du match actuel (Admin)
 app.patch('/api/match/:id', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { match_date, kickoff_local } = req.body;
+  const { match_date, kickoff_local, notes } = req.body;
   try {
     if (match_date) {
       await sql`UPDATE matches SET match_date = ${match_date} WHERE id = ${id}`;
     }
     if (kickoff_local) {
       await sql`UPDATE matches SET kickoff_local = ${kickoff_local} WHERE id = ${id}`;
+    }
+    if (notes !== undefined) {
+      await sql`UPDATE matches SET notes = ${notes || null} WHERE id = ${id}`;
     }
     res.json({ success: true });
   } catch (e) {

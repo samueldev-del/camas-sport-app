@@ -1,4 +1,4 @@
-export default function StatsPage({ tr, scorers, attendance }) {
+export default function StatsPage({ tr, scorers, attendance, isAdmin = false, onRevokeAttendance }) {
   const totalGoals = scorers.reduce((sum, scorer) => sum + Number(scorer.goals || 0), 0);
   const activePlayers = attendance.filter((player) => player.total > 0).length;
   const bestPunctuality = attendance.reduce((best, player) => {
@@ -45,20 +45,39 @@ export default function StatsPage({ tr, scorers, attendance }) {
         {attendance.filter((player) => player.total > 0).length === 0 ? (
           <p className="empty-row">{tr('no_history')}</p>
         ) : (
-          <table className="presences-table">
-            <thead><tr><th>{tr('th_player')}</th><th>{tr('th_present')}</th><th>{tr('th_lates')}</th><th>{tr('th_absences')}</th><th>{tr('th_punctuality')}</th></tr></thead>
-            <tbody>
-              {attendance.filter((player) => player.total > 0).slice(0, 15).map((player) => {
-                const punctuality = player.shows ? Math.round(((player.shows - player.lates) / player.shows) * 100) : 0;
-                return (
-                  <tr key={player.id}>
-                    <td>{player.name}</td><td>{player.shows}</td><td>{player.lates}</td><td>{player.absences}</td>
-                    <td><span className={`badge ${punctuality >= 80 ? 'badge-green' : punctuality >= 50 ? 'badge-yellow' : 'badge-red'}`}>{punctuality}%</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="stats-table-wrap">
+            <table className="presences-table stats-attendance-table">
+              <thead>
+                <tr>
+                  <th>{tr('th_player')}</th>
+                  <th>{tr('th_present')}</th>
+                  <th>{tr('th_lates')}</th>
+                  <th>{tr('th_absences')}</th>
+                  <th>{tr('th_punctuality')}</th>
+                  {isAdmin ? <th>{tr('th_action')}</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {attendance.filter((player) => player.total > 0).slice(0, 30).map((player) => {
+                  const punctuality = player.shows ? Math.round(((player.shows - player.lates) / player.shows) * 100) : 0;
+                  return (
+                    <tr key={player.id}>
+                      <td data-label={tr('th_player')}>{player.name}</td>
+                      <td data-label={tr('th_present')}>{player.shows}</td>
+                      <td data-label={tr('th_lates')}>{player.lates}</td>
+                      <td data-label={tr('th_absences')}>{player.absences}</td>
+                      <td data-label={tr('th_punctuality')}><span className={`badge ${punctuality >= 80 ? 'badge-green' : punctuality >= 50 ? 'badge-yellow' : 'badge-red'}`}>{punctuality}%</span></td>
+                      {isAdmin ? (
+                        <td data-label={tr('th_action')}>
+                          <button className="btn-ghost btn-choice-edit" onClick={() => onRevokeAttendance?.(player.id)}>{tr('admin_stats_revoke')}</button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </>

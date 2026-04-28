@@ -270,6 +270,7 @@ export default function App() {
   const [calendar, setCalendar] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [legal, setLegal] = useState(null);            // 'impressum' | 'privacy' | null
   const [cookieAck, setCookieAck] = useState(() => {
     try { return localStorage.getItem('camas_cookie_ack') === '1'; } catch { return true; }
@@ -385,14 +386,15 @@ export default function App() {
   const loadAdmin = async () => {
     if (!isAdmin) return;
     try {
-      const [f, c, a, cal, inv, birthdays] = await Promise.all([
+      const [f, c, a, cal, inv, birthdays, regs] = await Promise.all([
         api.fines(), api.caisse(),
         api.listAnnouncements().catch(() => []),
         api.matchCalendar().catch(() => []),
         api.inventory().catch(() => []),
         api.birthdaysUpcoming().catch(() => []),
+        api.adminRegistrations().catch(() => []),
       ]);
-      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal); setInventory(inv); setUpcomingBirthdays(Array.isArray(birthdays) ? birthdays : []);
+      setFines(f); setCaisse(c); setAnnouncements(a); setCalendar(cal); setInventory(inv); setUpcomingBirthdays(Array.isArray(birthdays) ? birthdays : []); setRegistrations(Array.isArray(regs) ? regs : []);
     } catch (e) { console.warn(e); }
   };
 
@@ -662,7 +664,27 @@ export default function App() {
 
           {tab === 'stats' && (
             <Suspense fallback={<section className="panel"><p className="empty-row">{tr('loading')}</p></section>}>
-              <StatsPage tr={tr} scorers={scorers} attendance={attStats} />
+              <StatsPage
+                tr={tr}
+                scorers={scorers}
+                attendance={attStats}
+                isAdmin={isAdmin}
+                matchId={match?.id}
+                onRevokeAttendance={async (playerId) => {
+                  if (!match?.id) {
+                    flash(tr('admin_no_current'), 'warn');
+                    return;
+                  }
+                  if (!confirm(tr('admin_stats_revoke_confirm'))) return;
+                  try {
+                    await api.adminRevokeAttendance(playerId, match.id);
+                    await Promise.all([loadHome(), loadStats()]);
+                    flash(tr('admin_stats_revoke_ok'), 'ok');
+                  } catch (e) {
+                    flash(e.message, 'err');
+                  }
+                }}
+              />
             </Suspense>
           )}
 
@@ -674,6 +696,7 @@ export default function App() {
                 announcements={announcements} fines={fines} caisse={caisse}
                 players={players} match={match} motmResults={motmResults}
                 teams={teams} matchGoals={matchGoals} calendar={calendar} inventory={inventory} upcomingBirthdays={upcomingBirthdays}
+                registrations={registrations}
                 onLogout={onAdminLogout}
                 onAddAnnouncement={async (body, title, pinned) => {
                   try { await api.addAnnouncement({ body, title, pinned }); loadAdmin(); loadHome(); flash(tr('ann_published'), 'ok'); }
@@ -724,6 +747,16 @@ export default function App() {
                   if (!confirm(tr('inventory_delete_confirm'))) return;
                   try { await api.deleteInventoryItem(id); await loadAdmin(); flash(tr('inventory_deleted'), 'ok'); }
                   catch (e) { flash(e.message, 'err'); }
+                }}
+                onRevokeRegistration={async (playerId) => {
+                  if (!confirm(tr('admin_revoke_confirm'))) return;
+                  try {
+                    await api.adminRevokeRegistration(playerId);
+                    await Promise.all([loadAdmin(), loadHome(), loadStats()]);
+                    flash(tr('admin_revoke_ok'), 'ok');
+                  } catch (e) {
+                    flash(e.message, 'err');
+                  }
                 }}
                 onUpdateMatch={onUpdateMatch}
                 />

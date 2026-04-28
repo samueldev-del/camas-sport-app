@@ -152,6 +152,7 @@ export const api = {
   adminCheck:      (code) => fetch(`${BASE}/api/admin/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-admin-code': code },
+    body: JSON.stringify({ code }),
   }).then(async (r) => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || 'Code admin invalide');

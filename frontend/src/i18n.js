@@ -22,7 +22,7 @@ const FR = {
 
   // Compte joueur
   auth_account_title:'Connexion / inscription joueur',
-  auth_account_intro:'Crée ton compte pour confirmer ta présence avec ton profil personnel, sans code PIN.',
+  auth_account_intro:'Crée ton compte pour confirmer ta présence avec ton profil personnel.',
   auth_register_title:'Créer un compte',
   auth_register_intro:'Rejoins le groupe avec un profil complet pour les présences, les équipes et le vote du joueur du jour.',
   auth_login_title: 'Se connecter',
@@ -548,7 +548,7 @@ const DE = {
 
   // Spielerkonto
   auth_account_title:'Spieler Login / Registrierung',
-  auth_account_intro:'Erstelle dein Konto, damit du deine Anwesenheit mit deinem persönlichen Profil ohne PIN bestätigen kannst.',
+  auth_account_intro:'Erstelle dein Konto, damit du deine Anwesenheit mit deinem persönlichen Profil bestätigen kannst.',
   auth_register_title:'Konto erstellen',
   auth_register_intro:'Tritt mit einem vollständigen Profil bei, damit Anwesenheit, Teams und Spieler-des-Tages-Voting sauber zusammenlaufen.',
   auth_login_title: 'Anmelden',

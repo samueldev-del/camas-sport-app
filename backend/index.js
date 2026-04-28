@@ -30,7 +30,19 @@ app.use(express.json({ limit: '4mb' }));
 const sql = neon(process.env.DATABASE_URL);
 
 // ---------- admin auth (code partagé, PIN ou mot de passe d'un joueur admin) ----------
-const ADMIN_CODE = (process.env.ADMIN_CODE || process.env.ADMIN_PASSWORD || process.env.ADMIN_PIN || '').trim();
+const ADMIN_SHARED_CREDENTIALS = [
+  process.env.ADMIN_CODE,
+  process.env.ADMIN_PASSWORD,
+  process.env.ADMIN_PIN,
+  process.env.ADMIN_PASS,
+  process.env.ADMIN_SECRET,
+]
+  .map((value) => (typeof value === 'string' ? value.trim() : ''))
+  .filter(Boolean);
+
+function hasSharedAdminCredentialConfigured() {
+  return ADMIN_SHARED_CREDENTIALS.length > 0;
+}
 
 async function hasAdminPinConfigured() {
   try {
@@ -62,7 +74,7 @@ async function hasAdminPasswordConfigured() {
 
 async function isValidAdminCredential(provided) {
   if (!provided) return false;
-  if (ADMIN_CODE && provided === ADMIN_CODE) return true;
+  if (ADMIN_SHARED_CREDENTIALS.includes(provided)) return true;
   try {
     const rows = await sql`
       SELECT 1
@@ -83,7 +95,7 @@ async function requireAdmin(req, res, next) {
     : '';
 
   try {
-    const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
+    const hasConfiguredAdmin = hasSharedAdminCredentialConfigured() || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
     if (!hasConfiguredAdmin) {
       return res.status(503).json({ error: 'Aucun accès admin configuré côté serveur' });
     }
@@ -105,7 +117,7 @@ app.post('/api/admin/check', async (req, res) => {
       ? req.headers['x-admin-code'].trim()
       : '';
 
-  const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
+  const hasConfiguredAdmin = hasSharedAdminCredentialConfigured() || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
   if (!hasConfiguredAdmin) return res.status(503).json({ ok: false, error: 'Aucun accès admin configuré' });
   if (!(await isValidAdminCredential(code))) return res.status(401).json({ ok: false, error: 'Code, PIN ou mot de passe admin invalide' });
   res.json({ ok: true });

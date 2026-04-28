@@ -191,12 +191,12 @@ async function compressAvatarFile(file, messages) {
     const offsetX = (image.width - side) / 2;
     const offsetY = (image.height - side) / 2;
     const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 320;
+    canvas.width = 256;
+    canvas.height = 256;
 
     const context = canvas.getContext('2d');
-    context.drawImage(image, offsetX, offsetY, side, side, 0, 0, 320, 320);
-    return canvas.toDataURL('image/jpeg', 0.86);
+    context.drawImage(image, offsetX, offsetY, side, side, 0, 0, 256, 256);
+    return canvas.toDataURL('image/jpeg', 0.78);
   } catch {
     throw new Error(messages.processing);
   }
@@ -526,6 +526,7 @@ export default function App() {
 
           {tab === 'account' && (
             <AccountPage
+              key={currentUser?.id || 'guest'}
               tr={tr}
               currentUser={currentUser}
               authChecked={authChecked}
@@ -541,6 +542,7 @@ export default function App() {
                 const { user } = await api.updateMyProfile(payload);
                 setStoredPlayer(user);
                 setCurrentUser(user);
+                await Promise.all([loadHome(), loadStats()]);
                 flash(tr('auth_profile_saved'), 'ok');
                 return user;
               }}
@@ -802,6 +804,14 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
   const [registerBusy, setRegisterBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileName, setProfileName] = useState(() => currentUser?.name || '');
+  const [profilePronoun, setProfilePronoun] = useState(() => currentUser?.pronoun || '');
+  const [profileBirthDate, setProfileBirthDate] = useState(() => formatBirthDateDisplay(currentUser?.birthDate || ''));
+  const [profileEmail, setProfileEmail] = useState(() => currentUser?.email || '');
+  const [profilePhone, setProfilePhone] = useState(() => currentUser?.phone || '');
+  const [profileStats, setProfileStats] = useState(null);
+  const [profileStatsBusy, setProfileStatsBusy] = useState(() => !!currentUser);
   const [feedback, setFeedback] = useState('');
 
   const visualTitle = currentUser ? tr('auth_connected_title') : tr('auth_visual_title');
@@ -813,6 +823,29 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
     processing: tr('auth_avatar_processing_err'),
   };
   const connectedPreview = currentUser?.avatarUrl || buildProfileAvatar(currentUser?.name || '');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!currentUser) {
+      return undefined;
+    }
+
+    api.playerProfile(currentUser.id)
+      .then((data) => {
+        if (!cancelled) setProfileStats(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileStatsBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   const updateConnectedAvatar = async (event) => {
     const file = event.target.files?.[0];
@@ -828,6 +861,36 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
       setFeedback(error.message);
     } finally {
       setAvatarBusy(false);
+    }
+  };
+
+  const submitConnectedProfile = async (event) => {
+    event.preventDefault();
+    if (!isBirthDateComplete(profileBirthDate)) {
+      setFeedback(tr('auth_birth_date_invalid'));
+      return;
+    }
+
+    setProfileBusy(true);
+    setFeedback('');
+    try {
+      const user = await onUpdateProfile({
+        name: profileName,
+        pronoun: profilePronoun,
+        birthDate: profileBirthDate,
+        email: profileEmail,
+        phone: profilePhone,
+      });
+      setProfileName(user.name || '');
+      setProfilePronoun(user.pronoun || '');
+      setProfileBirthDate(formatBirthDateDisplay(user.birthDate || ''));
+      setProfileEmail(user.email || '');
+      setProfilePhone(user.phone || '');
+      setProfileStats((current) => (current ? { ...current, name: user.name } : current));
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setProfileBusy(false);
     }
   };
 
@@ -918,6 +981,58 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
               <div className="overview-chip"><strong>{connectedBirthDate}</strong><span>{tr('auth_birth_date')}</span></div>
               <div className="overview-chip"><strong>{currentUser.email || '—'}</strong><span>{tr('auth_email')}</span></div>
               <div className="overview-chip"><strong>{currentUser.phone || '—'}</strong><span>{tr('auth_phone')}</span></div>
+            </div>
+            <div className="account-profile-stack">
+              <form className="account-card account-card-profile" onSubmit={submitConnectedProfile}>
+                <div className="account-card-head">
+                  <h3>{tr('auth_profile_edit_title')}</h3>
+                  <p>{tr('auth_profile_edit_intro')}</p>
+                </div>
+                <div className="account-form-grid">
+                  <div>
+                    <label>{tr('auth_name')}</label>
+                    <input value={profileName} onChange={e => setProfileName(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_pronoun')}</label>
+                    <input value={profilePronoun} onChange={e => setProfilePronoun(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_birth_date')}</label>
+                    <input type="text" inputMode="numeric" value={profileBirthDate} placeholder={tr('auth_birth_date_ph')} onChange={e => setProfileBirthDate(formatBirthDateInput(e.target.value))} required />
+                  </div>
+                  <div>
+                    <label>{tr('auth_phone')}</label>
+                    <input type="tel" value={profilePhone} onChange={e => setProfilePhone(e.target.value)} required />
+                  </div>
+                  <div className="account-form-span-2">
+                    <label>{tr('auth_email')}</label>
+                    <input type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} required />
+                  </div>
+                </div>
+                <button type="submit" className="btn-primary account-submit" disabled={profileBusy}>{profileBusy ? '…' : tr('auth_profile_save')}</button>
+              </form>
+
+              <section className="account-actions-card account-tracking-card">
+                <div className="account-card-head">
+                  <h3>{tr('auth_profile_tracking_title')}</h3>
+                  <p>{tr('auth_profile_tracking_intro')}</p>
+                </div>
+                {profileStatsBusy ? (
+                  <p>{tr('auth_profile_tracking_loading')}</p>
+                ) : profileStats ? (
+                  <div className="account-tracking-grid">
+                    <div className="overview-chip"><strong>{profileStats.goals}</strong><span>{tr('auth_profile_stat_goals')}</span></div>
+                    <div className="overview-chip"><strong>{profileStats.assists}</strong><span>{tr('auth_profile_stat_assists')}</span></div>
+                    <div className="overview-chip"><strong>{profileStats.shows}</strong><span>{tr('auth_profile_stat_presence')}</span></div>
+                    <div className="overview-chip"><strong>{profileStats.punctuality}%</strong><span>{tr('auth_profile_stat_punctuality')}</span></div>
+                    <div className="overview-chip"><strong>{profileStats.motm_wins}</strong><span>{tr('auth_profile_stat_motm')}</span></div>
+                    <div className="overview-chip"><strong>{Number(profileStats.due_amount || 0).toFixed(2)}€</strong><span>{tr('auth_profile_stat_due')}</span></div>
+                  </div>
+                ) : (
+                  <p>{tr('auth_profile_tracking_loading')}</p>
+                )}
+              </section>
             </div>
             <div className="account-actions-card">
               <p>{tr('auth_connected_sub')}</p>
@@ -1082,7 +1197,7 @@ function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
    ======================================================== */
 function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, players, scorers, attStats, setSelectedPlayerCard, lastMatch, announcements, motmResults, motmLast, onRequireAuth, onConfirm, onUnvote, onMotmVote }) {
   const [presenceOpen, setPresenceOpen] = useState(false);
-  const topScorer = scorers.find(s => s.goals > 0) || scorers[0];
+  const topScorer = scorers.find(s => Number(s.goals) > 0);
   const birthdayLead = birthdaysToday[0] || null;
   const isCurrentUserBirthday = !!currentUser && birthdaysToday.some((player) => player.id === currentUser.id);
 
@@ -1369,7 +1484,7 @@ function LastMatchCard({ tr, lang, lastMatch }) {
 }
 
 function AttendanceChangeModal({ tr, attendance, onClose, onSubmit }) {
-  const [intent, setIntent] = useState(attendance.status === 'absent' ? 'no' : 'maybe');
+  const [intent, setIntent] = useState(attendance.status === 'absent' ? 'no' : attendance.status === 'maybe' ? 'maybe' : 'yes');
   const [position, setPosition] = useState(attendance.position || null);
   const needsPosition = intent === 'yes';
 
@@ -1436,9 +1551,7 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
   const [rating, setRating] = useState(5);
   const presentIds = new Set(attendees.filter(a => a.status !== 'maybe' && a.status !== 'absent').map(a => a.player_id));
   const attendanceByPlayerId = useMemo(() => new Map(attendees.map(a => [a.player_id, a])), [attendees]);
-  const averageRating = players.length
-    ? players.reduce((sum, player) => sum + Number(player.rating || 0), 0) / players.length
-    : 0;
+  const positionCount = attendees.filter((attendance) => !!attendance.position).length;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1446,7 +1559,6 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
     try { await api.createPlayer({ name: name.trim(), rating: Number(rating) }); setName(''); setRating(5); setAdding(false); onReload(); flash(tr('player_added', { name: name.trim() })); }
     catch (e) { flash(e.message, 'err'); }
   };
-  const updateRating = async (p, v) => { try { await api.updatePlayer(p.id, { rating: Number(v) }); onReload(); } catch (e) { flash(e.message, 'err'); } };
   const remove = async (p) => { if (!confirm(tr('delete_confirm', { name: p.name }))) return; try { await api.deletePlayer(p.id); onReload(); flash(tr('player_removed')); } catch (e) { flash(e.message, 'err'); } };
   const sundayStatus = (attendance) => {
     if (!attendance) return <span className="badge badge-muted">—</span>;
@@ -1487,14 +1599,14 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
             <span>{tr('status_confirmed')}</span>
           </div>
           <div className="overview-chip">
-            <strong>{averageRating.toFixed(1)}</strong>
-            <span>{tr('th_level')}</span>
+            <strong>{positionCount}</strong>
+            <span>{tr('players_positions_ready')}</span>
           </div>
         </div>
         {isAdmin && adding && (
           <form className="inline-form" onSubmit={submit}>
             <input placeholder={tr('full_name_ph')} value={name} onChange={e => setName(e.target.value)} autoFocus />
-            <label className="rating-input">{tr('th_level')}: <strong>{rating}</strong>
+            <label className="rating-input">{tr('player_internal_rating')}: <strong>{rating}</strong>
               <input type="range" min="1" max="10" step="0.5" value={rating} onChange={e => setRating(e.target.value)} />
             </label>
             <button className="btn-primary" type="submit">{tr('save')}</button>
@@ -1504,25 +1616,25 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
           <p className="empty-row">{tr('no_players')}</p>
         ) : (
           <table className="presences-table player-status-table">
-            <thead><tr><th>{tr('th_name')}</th><th>{tr('th_level')}</th><th>{tr('th_sunday')}</th><th>{tr('th_action')}</th>{isAdmin && <th></th>}</tr></thead>
+            <thead><tr><th>{tr('th_name')}</th><th>{tr('th_position')}</th><th>{tr('th_sunday')}</th><th>{tr('th_action')}</th>{isAdmin && <th></th>}</tr></thead>
             <tbody>
               {players.map(p => {
                 const attendance = attendanceByPlayerId.get(p.id);
                 const isCurrentUser = currentUser?.id === p.id;
-                const canEditChoice = isCurrentUser && attendance && ['maybe', 'absent'].includes(attendance.status);
+                const canEditChoice = isCurrentUser && !!attendance;
+                const avatarSrc = p.avatarUrl || (isCurrentUser && currentUser?.avatarUrl ? currentUser.avatarUrl : buildProfileAvatar(p.name));
                 return (
                   <tr key={p.id}>
-                    <td>{p.name} {isCurrentUser ? <span className="mini-tag self-tag">{tr('auth_me_badge')}</span> : null}</td>
                     <td>
-                      {isAdmin ? (
-                        <div className="rating-inline">
-                          <input type="range" min="1" max="10" step="0.5" defaultValue={Number(p.rating)} onChange={e => updateRating(p, e.target.value)} />
-                          <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
+                      <div className="player-identity">
+                        <img className="player-avatar" src={avatarSrc} alt={p.name} />
+                        <div className="player-meta">
+                          <span>{p.name}</span>
+                          {isCurrentUser ? <span className="mini-tag self-tag">{tr('auth_me_badge')}</span> : null}
                         </div>
-                      ) : (
-                        <span className="rating-pill">{Number(p.rating).toFixed(1)}</span>
-                      )}
+                      </div>
                     </td>
+                    <td>{attendance?.position ? <span className={`pos-tag pos-${attendance.position}`}>{attendance.position}</span> : <span className="muted-txt">—</span>}</td>
                     <td>{sundayStatus(attendance)}</td>
                     <td>
                       {canEditChoice ? (

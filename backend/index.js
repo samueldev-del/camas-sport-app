@@ -10,10 +10,22 @@ const TZ = 'Europe/Berlin';
 const LATE_FINE_EUR = 2.0;
 const PER_TEAM = 11; // format unique : 11 vs 11
 const AUTH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-const AUTH_SECRET = process.env.AUTH_SECRET?.trim() || crypto.randomBytes(32).toString('hex');
+
+function resolveAuthSecret() {
+  const configured = process.env.AUTH_SECRET?.trim();
+  if (configured) return configured;
+
+  // Keep player sessions valid across server restarts when AUTH_SECRET is not set.
+  return crypto
+    .createHash('sha256')
+    .update(process.env.DATABASE_URL || 'camas-sport-auth-secret')
+    .digest('hex');
+}
+
+const AUTH_SECRET = resolveAuthSecret();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -392,7 +404,22 @@ async function ensurePlayerAccountSchema() {
   }
 }
 
+async function ensureAttendanceSchema() {
+  try {
+    await sql`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS position TEXT`;
+    await sql`ALTER TABLE attendances DROP CONSTRAINT IF EXISTS attendances_position_check`;
+    await sql`
+      ALTER TABLE attendances
+      ADD CONSTRAINT attendances_position_check
+      CHECK (position IS NULL OR position IN ('G','DEF','MIL','ATT'))
+    `;
+  } catch (error) {
+    console.error('attendance bootstrap error:', error);
+  }
+}
+
 const playerAccountsBootstrap = ensurePlayerAccountSchema();
+const attendanceBootstrap = ensureAttendanceSchema();
 const inventoryBootstrap = ensureInventoryTable();
 
 // ---------- routes ----------
@@ -525,17 +552,72 @@ app.get('/api/auth/me', requirePlayerAuth, async (req, res) => {
 app.patch('/api/auth/me', requirePlayerAuth, async (req, res) => {
   await playerAccountsBootstrap;
 
+  const hasAvatarUpdate = Object.prototype.hasOwnProperty.call(req.body || {}, 'avatarUrl');
   let cleanAvatarUrl;
+  let cleanBirthDate;
   try {
-    cleanAvatarUrl = normalizeAvatarUrl(req.body?.avatarUrl);
+    if (hasAvatarUpdate) {
+      cleanAvatarUrl = normalizeAvatarUrl(req.body?.avatarUrl);
+    }
+    if (req.body?.birthDate !== undefined) {
+      cleanBirthDate = normalizeBirthDate(req.body.birthDate);
+    }
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
 
   try {
+    const [current] = await sql`
+      SELECT id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
+      FROM players
+      WHERE id = ${req.player.id}
+      LIMIT 1
+    `;
+    if (!current) return res.status(404).json({ error: 'Compte joueur introuvable' });
+
+    const name = req.body?.name !== undefined ? String(req.body.name).trim() : current.name;
+    const pronoun = req.body?.pronoun !== undefined ? String(req.body.pronoun).trim() : current.pronoun;
+    const email = req.body?.email !== undefined ? normalizeEmail(req.body.email) : current.email;
+    const phone = req.body?.phone !== undefined ? normalizePhone(req.body.phone) : current.phone;
+    const birthDate = req.body?.birthDate !== undefined ? cleanBirthDate : current.birth_date;
+    const avatarUrl = hasAvatarUpdate ? cleanAvatarUrl : current.avatar_url;
+
+    if (!name || !pronoun || !birthDate || !email || !phone) {
+      return res.status(400).json({ error: 'Tous les champs du profil sont requis' });
+    }
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Adresse email invalide' });
+    if (!isValidPhone(phone)) return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+
+    const [nameConflict] = await sql`
+      SELECT id FROM players
+      WHERE LOWER(name) = LOWER(${name}) AND id <> ${req.player.id}
+      LIMIT 1
+    `;
+    if (nameConflict) return res.status(409).json({ error: 'Ce nom est déjà utilisé' });
+
+    const [emailConflict] = await sql`
+      SELECT id FROM players
+      WHERE LOWER(email) = ${email} AND id <> ${req.player.id}
+      LIMIT 1
+    `;
+    if (emailConflict) return res.status(409).json({ error: 'Cet email est déjà utilisé' });
+
+    const [phoneConflict] = await sql`
+      SELECT id FROM players
+      WHERE phone = ${phone} AND id <> ${req.player.id}
+      LIMIT 1
+    `;
+    if (phoneConflict) return res.status(409).json({ error: 'Ce numéro de téléphone est déjà utilisé' });
+
     const rows = await sql`
       UPDATE players
-      SET avatar_url = ${cleanAvatarUrl}
+      SET name = ${name},
+          pronoun = ${pronoun},
+          birth_date = ${birthDate},
+          age = NULL,
+          email = ${email},
+          phone = ${phone},
+          avatar_url = ${avatarUrl}
       WHERE id = ${req.player.id}
       RETURNING id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
     `;
@@ -548,7 +630,12 @@ app.patch('/api/auth/me', requirePlayerAuth, async (req, res) => {
 
 // Players
 app.get('/api/players', async (_req, res) => {
-  const rows = await sql`SELECT id, name, rating FROM players ORDER BY name`;
+  await playerAccountsBootstrap;
+  const rows = await sql`
+    SELECT id, name, rating, avatar_url AS "avatarUrl"
+    FROM players
+    ORDER BY name
+  `;
   res.json(rows);
 });
 
@@ -678,6 +765,7 @@ app.patch('/api/match/:id', requireAdmin, async (req, res) => {
 
 // Vote — 3 intentions possibles : 'yes' (vient), 'maybe' (peut-être), 'no' (absent)
 app.post('/api/vote', requirePlayerAuth, async (req, res) => {
+  await attendanceBootstrap;
   const { playerId: rawPlayerId, position, intent = 'yes' } = req.body || {};
   const playerId = req.player.id;
   if (rawPlayerId && Number(rawPlayerId) !== Number(playerId)) {
@@ -740,6 +828,7 @@ app.post('/api/vote', requirePlayerAuth, async (req, res) => {
 
 // Update position after vote
 app.patch('/api/vote/position', async (req, res) => {
+  await attendanceBootstrap;
   const { playerId, matchId, position } = req.body;
   if (!['G','DEF','MIL','ATT'].includes(position)) return res.status(400).json({ error: 'Poste invalide' });
   const rows = await sql`
@@ -1393,7 +1482,7 @@ app.get('/api/players/:id/profile', async (req, res) => {
 });
 
 if (require.main === module) {
-  inventoryBootstrap.finally(() => {
+  Promise.all([inventoryBootstrap, playerAccountsBootstrap, attendanceBootstrap]).finally(() => {
     app.listen(port, () => console.log(`🔥 Backend CAMAS sur http://localhost:${port}`));
   });
 }

@@ -73,6 +73,7 @@ const FR = {
   auth_profile_stat_due:'Amendes dues',
   auth_required:    'Connecte-toi pour gérer ta présence',
   auth_presence_intro:'Choisis ton poste pour confirmer ta présence, {name}.',
+  auth_presence_intro_guest:'Choisis le poste qui te convient puis valide. On te demandera ensuite de te connecter.',
   auth_home_ready:  'Ton statut du dimanche est synchronisé avec ton compte.',
   auth_no_choice:   'Pas encore déclaré',
   auth_home_hint:   'Connecte-toi pour voter en ton nom',
@@ -233,8 +234,8 @@ const FR = {
 
   // Admin
   admin_modal_title:'Mode administrateur',
-  admin_intro:      'Saisis le code admin que t\'a fourni le responsable.',
-  admin_code:       'Code admin',
+  admin_intro:      'Saisis le code, le PIN ou le mot de passe admin fourni par le responsable.',
+  admin_code:       'Code ou mot de passe admin',
   admin_unlock:     '🔓 Déverrouiller',
   admin_ok:         'Mode admin activé',
   admin_locked:     'Réservé aux admins',
@@ -598,6 +599,7 @@ const DE = {
   auth_profile_stat_due:'Offene Strafen',
   auth_required:    'Melde dich an, um deine Anwesenheit zu verwalten',
   auth_presence_intro:'Wähle deine Position, um deine Anwesenheit zu bestätigen, {name}.',
+  auth_presence_intro_guest:'Wähle deine Position und bestätige. Danach wirst du zum Login weitergeleitet.',
   auth_home_ready:  'Dein Sonntagsstatus ist jetzt mit deinem Konto verknüpft.',
   auth_no_choice:   'Noch nicht angegeben',
   auth_home_hint:   'Melde dich an, um in deinem Namen abzustimmen',
@@ -758,8 +760,8 @@ const DE = {
 
   // Admin
   admin_modal_title:'Administrator-Modus',
-  admin_intro:      'Gib den Admin-Code ein, den dir der Verantwortliche gegeben hat.',
-  admin_code:       'Admin-Code',
+  admin_intro:      'Gib den Admin-Code, die Admin-PIN oder das Admin-Passwort ein.',
+  admin_code:       'Admin-Code oder Passwort',
   admin_unlock:     '🔓 Entsperren',
   admin_ok:         'Admin-Modus aktiviert',
   admin_locked:     'Nur für Admins',

@@ -29,7 +29,7 @@ app.use(express.json({ limit: '4mb' }));
 
 const sql = neon(process.env.DATABASE_URL);
 
-// ---------- admin auth (code partagé ou PIN d'un joueur admin) ----------
+// ---------- admin auth (code partagé, PIN ou mot de passe d'un joueur admin) ----------
 const ADMIN_CODE = (process.env.ADMIN_CODE || process.env.ADMIN_PASSWORD || process.env.ADMIN_PIN || '').trim();
 
 async function hasAdminPinConfigured() {
@@ -38,6 +38,20 @@ async function hasAdminPinConfigured() {
       SELECT 1
       FROM players
       WHERE is_admin = TRUE AND COALESCE(pin, '') <> ''
+      LIMIT 1
+    `;
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function hasAdminPasswordConfigured() {
+  try {
+    const rows = await sql`
+      SELECT 1
+      FROM players
+      WHERE is_admin = TRUE AND COALESCE(password_hash, '') <> ''
       LIMIT 1
     `;
     return rows.length > 0;
@@ -56,7 +70,8 @@ async function isValidAdminCredential(provided) {
       WHERE is_admin = TRUE AND pin = ${provided}
       LIMIT 1
     `;
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    return await adminPasswordMatches(provided);
   } catch {
     return false;
   }
@@ -68,12 +83,12 @@ async function requireAdmin(req, res, next) {
     : '';
 
   try {
-    const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured();
+    const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
     if (!hasConfiguredAdmin) {
       return res.status(503).json({ error: 'Aucun accès admin configuré côté serveur' });
     }
     if (!(await isValidAdminCredential(provided))) {
-      return res.status(401).json({ error: 'Accès refusé — code ou PIN admin invalide' });
+      return res.status(401).json({ error: 'Accès refusé — code, PIN ou mot de passe admin invalide' });
     }
     next();
   } catch (error) {
@@ -90,9 +105,9 @@ app.post('/api/admin/check', async (req, res) => {
       ? req.headers['x-admin-code'].trim()
       : '';
 
-  const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured();
+  const hasConfiguredAdmin = ADMIN_CODE || await hasAdminPinConfigured() || await hasAdminPasswordConfigured();
   if (!hasConfiguredAdmin) return res.status(503).json({ ok: false, error: 'Aucun accès admin configuré' });
-  if (!(await isValidAdminCredential(code))) return res.status(401).json({ ok: false, error: 'Code ou PIN admin invalide' });
+  if (!(await isValidAdminCredential(code))) return res.status(401).json({ ok: false, error: 'Code, PIN ou mot de passe admin invalide' });
   res.json({ ok: true });
 });
 
@@ -191,6 +206,20 @@ function verifyPassword(password, storedHash = '') {
   const expected = Buffer.from(expectedDigest, 'hex');
   const actual = Buffer.from(actualDigest, 'hex');
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+async function adminPasswordMatches(password) {
+  if (!password) return false;
+  try {
+    const rows = await sql`
+      SELECT password_hash
+      FROM players
+      WHERE is_admin = TRUE AND COALESCE(password_hash, '') <> ''
+    `;
+    return rows.some((row) => verifyPassword(password, row.password_hash));
+  } catch {
+    return false;
+  }
 }
 
 function signToken(playerId) {
@@ -331,6 +360,7 @@ function upcomingBirthdayInfo(value, today = todayBerlinParts()) {
 }
 
 async function getOrCreateCurrentMatch() {
+  await matchSchemaBootstrap;
   const date = nextSundayBerlin();
   const existing = await sql`SELECT * FROM matches WHERE match_date = ${date} LIMIT 1`;
   if (existing.length) return existing[0];
@@ -418,9 +448,31 @@ async function ensureAttendanceSchema() {
   }
 }
 
+async function ensureMatchSchema() {
+  try {
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS kickoff_local TIME NOT NULL DEFAULT '10:00'`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS notes TEXT`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS team_a_score INT`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS team_b_score INT`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS photo_url TEXT`;
+    await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS winner_team TEXT`;
+    await sql`ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_winner_team_check`;
+    await sql`
+      ALTER TABLE matches
+      ADD CONSTRAINT matches_winner_team_check
+      CHECK (winner_team IS NULL OR winner_team IN ('A','B','draw'))
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_matches_done_date ON matches(match_date DESC) WHERE status = 'done'`;
+  } catch (error) {
+    console.error('match schema bootstrap error:', error);
+  }
+}
+
 const playerAccountsBootstrap = ensurePlayerAccountSchema();
 const attendanceBootstrap = ensureAttendanceSchema();
 const inventoryBootstrap = ensureInventoryTable();
+const matchSchemaBootstrap = ensureMatchSchema();
 
 // ---------- routes ----------
 app.get('/', (_req, res) => res.send('⚽ CAMAS Sport API'));
@@ -886,6 +938,7 @@ app.get('/api/teams/:matchId', async (req, res) => {
 
 // Match result (score) — admin sets final score
 app.post('/api/match/:id/result', requireAdmin, async (req, res) => {
+  await matchSchemaBootstrap;
   const id = parseInt(req.params.id, 10);
   const { teamA, teamB } = req.body;
   const rows = await sql`
@@ -901,6 +954,7 @@ app.post('/api/match/:id/result', requireAdmin, async (req, res) => {
 
 // Last finished match (for dashboard)
 app.get('/api/match/last', async (_req, res) => {
+  await matchSchemaBootstrap;
   const rows = await sql`
     SELECT * FROM matches
     WHERE status = 'done' AND team_a_score IS NOT NULL AND team_b_score IS NOT NULL
@@ -1282,6 +1336,7 @@ app.get('/api/motm/last', async (_req, res) => {
 // ========================================================
 app.get('/api/match/history', async (_req, res) => {
   try {
+    await matchSchemaBootstrap;
     const matches = await sql`
       SELECT id, match_date, team_a_score, team_b_score, photo_url, winner_team
       FROM matches
@@ -1312,6 +1367,7 @@ app.get('/api/match/history', async (_req, res) => {
 // PLANNING — calendrier admin
 // ========================================================
 app.get('/api/match/calendar', requireAdmin, async (_req, res) => {
+  await matchSchemaBootstrap;
   const rows = await sql`
     SELECT id, match_date, kickoff_local, status, notes,
            team_a_score, team_b_score, photo_url, winner_team
@@ -1323,6 +1379,7 @@ app.get('/api/match/calendar', requireAdmin, async (_req, res) => {
 });
 
 app.post('/api/match/schedule', requireAdmin, async (req, res) => {
+  await matchSchemaBootstrap;
   const { date, kickoff = '10:00', notes = null } = req.body || {};
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: 'Date invalide (YYYY-MM-DD requis)' });
@@ -1343,6 +1400,7 @@ app.post('/api/match/schedule', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/match/:id', requireAdmin, async (req, res) => {
+  await matchSchemaBootstrap;
   const id = parseInt(req.params.id, 10);
   try {
     const [m] = await sql`SELECT status FROM matches WHERE id = ${id}`;
@@ -1359,6 +1417,7 @@ app.delete('/api/match/:id', requireAdmin, async (req, res) => {
 // PHOTO + ÉQUIPE GAGNANTE
 // ========================================================
 app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
+  await matchSchemaBootstrap;
   const id = parseInt(req.params.id, 10);
   const { photoUrl = null, winnerTeam = null } = req.body || {};
   
@@ -1389,6 +1448,7 @@ app.patch('/api/match/:id/photo', requireAdmin, async (req, res) => {
 
 app.get('/api/match/gallery', async (_req, res) => {
   try {
+    await matchSchemaBootstrap;
     const rows = await sql`
       SELECT id, match_date, team_a_score, team_b_score, photo_url, winner_team
       FROM matches

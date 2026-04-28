@@ -1300,6 +1300,9 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
 
 function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
   const [position, setPosition] = useState(null);
+  const introCopy = currentUser
+    ? tr('auth_presence_intro', { name: currentUser.name || '' })
+    : tr('auth_presence_intro_guest');
 
   return (
     <div className="sheet-overlay quick-choice-overlay" onClick={onClose}>
@@ -1309,7 +1312,7 @@ function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
           <h3>{tr('confirm_presence')}</h3>
           <button className="ghost-btn" onClick={onClose}>✕</button>
         </div>
-        <p className="pp-intro">{tr('auth_presence_intro', { name: currentUser?.name || '' })}</p>
+        <p className="pp-intro">{introCopy}</p>
         <div className="position-picker compact">
           <div className="position-grid">
             {POSITIONS.map(option => (
@@ -1364,12 +1367,12 @@ function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, pla
     : tr('birthday_today_copy', { names: birthdayList });
 
   const handleIntent = async (intent) => {
-    if (!currentUser) {
-      onRequireAuth();
-      return;
-    }
     if (intent === 'yes') {
       setPresenceOpen(true);
+      return;
+    }
+    if (!currentUser) {
+      onRequireAuth();
       return;
     }
     await onConfirm(intent, null);
@@ -1580,11 +1583,16 @@ function HomePage({ tr, lang, currentUser, birthdaysToday, match, attendees, pla
         </section>
       </div>
 
-      {presenceOpen && currentUser && (
+      {presenceOpen && (
         <PresenceChoiceModal
           tr={tr}
           currentUser={currentUser}
           onSubmit={async (position) => {
+            if (!currentUser) {
+              setPresenceOpen(false);
+              onRequireAuth();
+              return;
+            }
             await onConfirm('yes', position);
             setPresenceOpen(false);
           }}

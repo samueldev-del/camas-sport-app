@@ -55,6 +55,62 @@ function PlayerCardModal({ player, onClose }) {
   );
 }
 
+function MobileProfileMenu({ tr, currentUser, isAdmin, currentTab, tabs, onClose, onSelectTab, onPlayerLogout, onAdminLogout }) {
+  const menuTabs = [
+    { id: 'account', icon: '👤', key: currentUser ? 'auth_profile' : 'auth_login_short', locked: false },
+    ...tabs.map((tab) => ({ ...tab, locked: tab.adminOnly && !isAdmin })),
+  ];
+
+  return (
+    <div className="sheet-overlay mobile-profile-menu-overlay" onClick={onClose}>
+      <div className="sheet small mobile-profile-menu-sheet" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-head mobile-profile-menu-head">
+          <div className="mobile-profile-menu-title-wrap">
+            <h3>{tr('auth_profile')}</h3>
+            <p>{currentUser ? currentUser.name : tr('auth_account_cta')}</p>
+          </div>
+          <button className="ghost-btn" onClick={onClose} aria-label={tr('cancel')}>✕</button>
+        </div>
+
+        <div className="mobile-profile-menu-body">
+          <div className="mobile-profile-menu-identity">
+            <img className="mobile-profile-menu-avatar" src={currentUser?.avatarUrl || buildProfileAvatar(currentUser?.name || 'CAMAS')} alt={tr('auth_profile')} />
+            <div>
+              <strong>{currentUser ? currentUser.name : tr('auth_account_cta')}</strong>
+              <span>{currentUser ? tr('auth_connected_sub') : tr('auth_account_intro')}</span>
+            </div>
+          </div>
+
+          <div className="mobile-profile-menu-list">
+            {menuTabs.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`mobile-profile-menu-link ${currentTab === item.id ? 'active' : ''} ${item.locked ? 'locked' : ''}`}
+                onClick={() => onSelectTab(item.id)}
+                title={item.locked ? tr('admin_locked') : ''}
+              >
+                <span className="mobile-profile-menu-icon">{item.icon}{item.locked ? ' 🔒' : ''}</span>
+                <span>{tr(item.key)}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mobile-profile-menu-actions">
+            {currentUser ? (
+              <button type="button" className="btn-ghost mobile-profile-menu-logout" onClick={onPlayerLogout}>{tr('auth_logout')}</button>
+            ) : null}
+            {isAdmin ? (
+              <button type="button" className="btn-ghost mobile-profile-menu-logout" onClick={onAdminLogout}>{tr('admin_logout_btn')}</button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TABS_BASE = [
   { id: 'home',     icon: '🏠', key: 'tab_home',    adminOnly: false },
   { id: 'players',  icon: '👥', key: 'tab_players', adminOnly: false },
@@ -131,6 +187,26 @@ function formatBirthDateDisplay(value = '') {
   if (!match) return value;
 
   return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+function computeAgeFromBirthDate(value = '') {
+  const normalized = /^\d{2}\.\d{2}\.\d{4}$/.test(value)
+    ? value.split('.').reverse().join('-')
+    : value;
+  const match = String(normalized).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const today = new Date();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  let age = today.getUTCFullYear() - year;
+
+  if ((today.getUTCMonth() + 1) < month || ((today.getUTCMonth() + 1) === month && today.getUTCDate() < day)) {
+    age -= 1;
+  }
+
+  return age;
 }
 
 function initialsFromName(value = '') {
@@ -221,6 +297,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getStoredPlayer());
   const [authChecked, setAuthChecked] = useState(() => !getPlayerToken());
   const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [mobileProfileMenuOpen, setMobileProfileMenuOpen] = useState(false);
+  const [isMobileProfileMenu, setIsMobileProfileMenu] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
+  ));
 
   const [tab, setTab] = useState('home');
   const [players, setPlayers] = useState([]);
@@ -289,6 +369,7 @@ export default function App() {
   const onAdminLogout = () => {
     clearAdminCode();
     setIsAdmin(false);
+    setMobileProfileMenuOpen(false);
     if (tab === 'admin') setTab('home');
     flash(tr('admin_logout'), 'ok');
   };
@@ -307,8 +388,23 @@ export default function App() {
     clearPlayerToken();
     clearStoredPlayer();
     setCurrentUser(null);
+    setMobileProfileMenuOpen(false);
     if (tab === 'account') setTab('home');
     flash(tr('auth_logout'), 'ok');
+  };
+
+  const goToTab = (nextTab) => {
+    setMobileProfileMenuOpen(false);
+    setTab(nextTab);
+  };
+
+  const handleAccountChipClick = () => {
+    if (isMobileProfileMenu) {
+      setMobileProfileMenuOpen((open) => !open);
+      return;
+    }
+
+    setTab('account');
   };
 
   const acceptCookies = () => {
@@ -426,6 +522,35 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', h);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const media = window.matchMedia('(max-width: 720px)');
+    const syncViewport = (event) => {
+      setIsMobileProfileMenu(event.matches);
+      if (!event.matches) setMobileProfileMenuOpen(false);
+    };
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', syncViewport);
+      return () => media.removeEventListener('change', syncViewport);
+    }
+
+    media.addListener(syncViewport);
+    return () => media.removeListener(syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileProfileMenu || !mobileProfileMenuOpen) return;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileProfileMenuOpen(false);
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isMobileProfileMenu, mobileProfileMenuOpen]);
+
   const visibleTabs = TABS_BASE; // on les affiche toutes — caisse devient verrouillée si non-admin
 
   return (
@@ -473,14 +598,15 @@ export default function App() {
               ))}
             </div>
 
-            <button className={`account-chip ${tab === 'account' ? 'active' : ''}`} onClick={() => setTab('account')}>
+            <button className={`account-chip ${tab === 'account' || mobileProfileMenuOpen ? 'active' : ''} ${isMobileProfileMenu ? 'mobile-menu-trigger' : ''} ${isMobileProfileMenu && !currentUser ? 'guest-menu-trigger' : ''}`} onClick={handleAccountChipClick}>
               <span className="account-chip-avatar-shell">
                 <img className="account-chip-avatar" src={profileAvatarSrc} alt={tr('auth_profile')} />
               </span>
               <span className="account-chip-copy">
                 <span className="account-chip-label">{tr('auth_profile')}</span>
-                <strong>{currentUser ? currentUser.name.split(' ')[0] : tr('auth_account_cta')}</strong>
+                {(!isMobileProfileMenu || currentUser) ? <strong>{currentUser ? currentUser.name.split(' ')[0] : tr('auth_account_cta')}</strong> : null}
               </span>
+              <span className="account-chip-burger" aria-hidden="true">{mobileProfileMenuOpen ? '✕' : '☰'}</span>
             </button>
 
             {installEvt && (
@@ -547,7 +673,7 @@ export default function App() {
                 return user;
               }}
               onLogout={onPlayerLogout}
-              onGoHome={() => setTab('home')}
+              onGoHome={() => goToTab('home')}
             />
           )}
 
@@ -685,6 +811,20 @@ export default function App() {
 
       {adminModalOpen && (
         <AdminModal tr={tr} onClose={() => setAdminModalOpen(false)} onSubmit={onAdminLogin} />
+      )}
+
+      {mobileProfileMenuOpen && isMobileProfileMenu && (
+        <MobileProfileMenu
+          tr={tr}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          currentTab={tab}
+          tabs={visibleTabs}
+          onClose={() => setMobileProfileMenuOpen(false)}
+          onSelectTab={goToTab}
+          onPlayerLogout={onPlayerLogout}
+          onAdminLogout={onAdminLogout}
+        />
       )}
 
       {legal && (
@@ -946,6 +1086,7 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
 
   if (currentUser) {
     const connectedBirthDate = formatBirthDateDisplay(currentUser.birthDate);
+    const connectedAge = computeAgeFromBirthDate(currentUser.birthDate || '');
 
     return (
       <section className="panel account-page account-page-connected">
@@ -979,6 +1120,7 @@ function AccountPage({ tr, currentUser, authChecked, onRegister, onLogin, onUpda
             <div className="account-summary-grid">
               <div className="overview-chip"><strong>{currentUser.pronoun || '—'}</strong><span>{tr('auth_pronoun')}</span></div>
               <div className="overview-chip"><strong>{connectedBirthDate}</strong><span>{tr('auth_birth_date')}</span></div>
+              <div className="overview-chip"><strong>{connectedAge ?? '—'}</strong><span>{tr('auth_age')}</span></div>
               <div className="overview-chip"><strong>{currentUser.email || '—'}</strong><span>{tr('auth_email')}</span></div>
               <div className="overview-chip"><strong>{currentUser.phone || '—'}</strong><span>{tr('auth_phone')}</span></div>
             </div>
@@ -1160,8 +1302,8 @@ function PresenceChoiceModal({ tr, currentUser, onClose, onSubmit }) {
   const [position, setPosition] = useState(null);
 
   return (
-    <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet small" onClick={e => e.stopPropagation()}>
+    <div className="sheet-overlay quick-choice-overlay" onClick={onClose}>
+      <div className="sheet small choice-sheet quick-choice-sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-head">
           <h3>{tr('confirm_presence')}</h3>
@@ -1625,7 +1767,7 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
                 const avatarSrc = p.avatarUrl || (isCurrentUser && currentUser?.avatarUrl ? currentUser.avatarUrl : buildProfileAvatar(p.name));
                 return (
                   <tr key={p.id}>
-                    <td>
+                    <td data-label={tr('th_name')}>
                       <div className="player-identity">
                         <img className="player-avatar" src={avatarSrc} alt={p.name} />
                         <div className="player-meta">
@@ -1634,9 +1776,9 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
                         </div>
                       </div>
                     </td>
-                    <td>{attendance?.position ? <span className={`pos-tag pos-${attendance.position}`}>{attendance.position}</span> : <span className="muted-txt">—</span>}</td>
-                    <td>{sundayStatus(attendance)}</td>
-                    <td>
+                    <td data-label={tr('th_position')}>{attendance?.position ? <span className={`pos-tag pos-${attendance.position}`}>{attendance.position}</span> : <span className="muted-txt">—</span>}</td>
+                    <td data-label={tr('th_sunday')}>{sundayStatus(attendance)}</td>
+                    <td className="player-status-action-cell" data-label={tr('th_action')}>
                       {canEditChoice ? (
                         <button className="btn-ghost btn-choice-edit" onClick={() => setAttendanceEditor(attendance)}>{tr('player_change_choice')}</button>
                       ) : isCurrentUser && !attendance ? (

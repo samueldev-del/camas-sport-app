@@ -3979,6 +3979,10 @@ textarea:focus {
   gap: 16px;
 }
 
+.quick-choice-sheet {
+  scroll-margin-top: 12px;
+}
+
 .choice-switch {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5060,6 +5064,205 @@ textarea:focus {
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 132px);
   }
 
+  .quick-choice-overlay {
+    align-items: flex-start;
+    padding: calc(8px + var(--safe-top)) 10px calc(100px + var(--safe-bottom));
+  }
+
+  .quick-choice-sheet {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 24px;
+  }
+
+  .quick-choice-sheet .sheet-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 246, 0.94));
+    backdrop-filter: blur(10px);
+  }
+
+  .quick-choice-sheet .row-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 12px;
+    background: linear-gradient(180deg, rgba(245, 249, 246, 0), rgba(245, 249, 246, 0.96) 22%);
+  }
+
+  .quick-choice-sheet .btn-primary,
+  .quick-choice-sheet .btn-ghost {
+    min-height: 46px;
+  }
+
+  .quick-choice-sheet .position-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-choice-sheet .pos-card {
+    min-height: 82px;
+  }
+
+  .player-status-table,
+  .player-status-table thead,
+  .player-status-table tbody,
+  .player-status-table tr,
+  .player-status-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .player-status-table thead {
+    display: none;
+  }
+
+  .player-status-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .player-status-table tr {
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(18, 103, 70, 0.12);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 247, 243, 0.94));
+    box-shadow: 0 12px 22px rgba(14, 42, 30, 0.08);
+  }
+
+  .player-status-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .player-status-table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .player-status-table td:first-child {
+    padding-top: 0;
+  }
+
+  .player-status-table td:first-child::before {
+    display: none;
+  }
+
+  .player-status-table td:last-child {
+    padding-bottom: 0;
+  }
+
+  .player-status-action-cell {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .player-status-table td[data-label] .btn-choice-edit {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .player-identity {
+    width: 100%;
+  }
+
+  .player-meta {
+    min-width: 0;
+  }
+
+  .player-meta span:first-child {
+    overflow-wrap: anywhere;
+  }
+
+  .admin-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .admin-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin: 4px -2px 0;
+    scrollbar-width: none;
+  }
+
+  .admin-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .admin-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .score-form,
+  .compact-admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .score-dash {
+    display: none;
+  }
+
+  .score-form .btn-primary,
+  .compact-admin-form .btn-primary {
+    width: 100%;
+  }
+
+
+@media (max-width: 420px) {
+  .top-nav.mobile-bottom {
+    padding: 5px 4px calc(5px + var(--safe-bottom));
+  }
+
+  .top-nav.mobile-bottom .nav-tab {
+    min-height: 50px;
+    padding: 8px 1px;
+  }
+
+  .top-nav.mobile-bottom .nav-ic {
+    font-size: 1.08rem;
+  }
+
+  .top-nav.mobile-bottom .nav-lbl {
+    font-size: 0.5rem;
+    line-height: 1.02;
+  }
+
+  .quick-choice-sheet .choice-switch {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 360px) {
+  .top-nav.mobile-bottom .nav-lbl {
+    display: none;
+  }
+
+  .top-nav.mobile-bottom .nav-tab {
+    min-height: 46px;
+  }
+
+  .top-nav.mobile-bottom .nav-ic {
+    font-size: 1.18rem;
+  }
+}
   .account-chip {
     min-width: 0;
     width: auto;
@@ -5252,5 +5455,222 @@ textarea:focus {
   .intent-lbl {
     font-size: 0.84rem;
     line-height: 1.18;
+  }
+}
+
+.account-chip-burger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: rgba(18, 103, 70, 0.08);
+  color: var(--green-d);
+  font-size: 1rem;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.mobile-profile-menu-head {
+  align-items: flex-start;
+}
+
+.mobile-profile-menu-title-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.mobile-profile-menu-title-wrap p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.mobile-profile-menu-body {
+  display: grid;
+  gap: 18px;
+  padding: 0 18px 18px;
+}
+
+.mobile-profile-menu-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(18, 103, 70, 0.1), rgba(231, 186, 58, 0.12));
+  border: 1px solid rgba(18, 103, 70, 0.1);
+}
+
+.mobile-profile-menu-identity div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.mobile-profile-menu-identity strong {
+  font-size: 0.98rem;
+  color: var(--green-d);
+}
+
+.mobile-profile-menu-identity span {
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.mobile-profile-menu-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 20px rgba(13, 53, 37, 0.12);
+}
+
+.mobile-profile-menu-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-profile-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(18, 103, 70, 0.1);
+  color: var(--ink);
+  text-align: left;
+  font-size: 0.92rem;
+  font-weight: 700;
+  box-shadow: 0 10px 18px rgba(13, 53, 37, 0.06);
+}
+
+.mobile-profile-menu-link.active {
+  color: var(--green-d);
+  border-color: rgba(18, 103, 70, 0.18);
+  background: linear-gradient(180deg, rgba(18, 103, 70, 0.12), rgba(255, 255, 255, 0.98));
+}
+
+.mobile-profile-menu-link.locked {
+  color: var(--muted);
+}
+
+.mobile-profile-menu-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  text-align: center;
+  font-size: 1.08rem;
+}
+
+.mobile-profile-menu-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-profile-menu-logout {
+  width: 100%;
+  justify-content: center;
+  min-height: 46px;
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .app {
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .tablet {
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .header {
+    position: sticky !important;
+    top: 0;
+    z-index: 260;
+  }
+
+  .top-nav.mobile-bottom {
+    display: none !important;
+  }
+
+  .content {
+    flex: 1 1 auto;
+    padding: 14px 14px calc(24px + var(--safe-bottom));
+  }
+
+  .footer {
+    margin-top: auto;
+    padding-bottom: calc(24px + var(--safe-bottom));
+  }
+
+  .sheet-overlay {
+    padding: calc(12px + var(--safe-top)) 12px calc(20px + var(--safe-bottom));
+  }
+
+  .quick-choice-overlay {
+    padding: calc(8px + var(--safe-top)) 10px calc(18px + var(--safe-bottom));
+  }
+
+  .account-chip.mobile-menu-trigger {
+    min-width: 0;
+    width: auto;
+    max-width: 100%;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .account-chip.mobile-menu-trigger .account-chip-copy {
+    flex: 1 1 auto;
+  }
+
+  .account-chip.mobile-menu-trigger .account-chip-burger {
+    display: inline-flex;
+  }
+
+  .account-chip.guest-menu-trigger {
+    min-width: 0;
+  }
+
+  .account-chip.guest-menu-trigger .account-chip-copy {
+    display: block;
+  }
+
+  .account-chip.guest-menu-trigger .account-chip-label {
+    margin: 0;
+  }
+
+  .mobile-profile-menu-sheet {
+    max-width: 420px;
+    border-radius: 26px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-tools {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .account-chip.mobile-menu-trigger {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .mobile-profile-menu-body {
+    padding: 0 14px 14px;
+  }
+
+  .mobile-profile-menu-link {
+    padding: 12px 13px;
   }
 }

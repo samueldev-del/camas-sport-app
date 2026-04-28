@@ -155,6 +155,14 @@ function normalizeAvatarUrl(value = '') {
   return trimmed;
 }
 
+function normalizeNameKey(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function computeAgeFromBirthDate(value) {
   const [year, month, day] = String(value).split('-').map(Number);
   const today = new Date();
@@ -559,18 +567,22 @@ app.post('/api/auth/register', async (req, res) => {
     if (phoneConflict.length) return res.status(409).json({ error: 'Ce numéro de téléphone est déjà utilisé' });
 
     const passwordHash = hashPassword(password);
-    const existingByName = await sql`
+    const normalizedIncomingName = normalizeNameKey(cleanName);
+    const allPlayers = await sql`
       SELECT id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin, password_hash
       FROM players
-      WHERE LOWER(name) = LOWER(${cleanName})
-      LIMIT 1
+      ORDER BY id ASC
     `;
+
+    const existingByName = allPlayers.filter((player) => normalizeNameKey(player.name) === normalizedIncomingName);
 
     let rows;
     if (existingByName.length) {
-      if (existingByName[0].password_hash) {
+      const registeredAccount = existingByName.find((player) => player.password_hash);
+      if (registeredAccount) {
         return res.status(409).json({ error: 'Un compte existe déjà pour ce joueur' });
       }
+      const draftPlayer = existingByName[0];
       rows = await sql`
         UPDATE players
         SET pronoun = ${cleanPronoun},
@@ -580,7 +592,7 @@ app.post('/api/auth/register', async (req, res) => {
             phone = ${cleanPhone},
             avatar_url = ${cleanAvatarUrl},
             password_hash = ${passwordHash}
-        WHERE id = ${existingByName[0].id}
+        WHERE id = ${draftPlayer.id}
         RETURNING id, name, pronoun, birth_date, age, email, phone, avatar_url, rating, is_admin
       `;
     } else {

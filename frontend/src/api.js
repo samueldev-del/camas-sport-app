@@ -2,7 +2,22 @@
 // servie sur le même domaine sous /api.
 // En dev : Vite proxy redirige /api/* vers http://localhost:3000 (cf. vite.config.js).
 // Possibilité d'override via VITE_API_URL (ex: http://192.168.1.10:3000 pour tester sur téléphone).
-const BASE = import.meta.env.VITE_API_URL || '';
+function resolveBaseUrl() {
+  const configured = (import.meta.env.VITE_API_URL || '').trim();
+  if (configured) return configured;
+
+  if (typeof window === 'undefined') return '';
+  const { hostname, port } = window.location;
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  // In local preview (ex: :4173), there is no Vite proxy for /api.
+  if (isLocal && port && port !== '3000') {
+    return `http://${hostname}:3000`;
+  }
+  return '';
+}
+
+const BASE = resolveBaseUrl();
 
 const ADMIN_KEY = 'camas_admin_code';
 const PLAYER_TOKEN_KEY = 'camas_player_token';

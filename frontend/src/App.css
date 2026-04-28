@@ -5518,6 +5518,10 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
+.account-chip.mobile-menu-trigger .account-chip-burger {
+  display: inline-flex;
+}
+
 .mobile-profile-menu-head {
   align-items: flex-start;
 }
@@ -5718,6 +5722,40 @@ textarea:focus {
 
   .mobile-profile-menu-link {
     padding: 12px 13px;
+  }
+}
+
+/* ================================================
+   MOBILE PERFORMANCE — containment + lazy paint
+   ================================================ */
+@media (max-width: 900px) {
+  /* Skip rendering offscreen sections — énorme gain sur longues pages */
+  .panel,
+  .admin-card,
+  .teams-showcase,
+  .gallery-grid,
+  .footer,
+  .player-status-table {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 600px;
+  }
+
+  /* Isole les recalculs de layout aux panneaux modifiés */
+  .panel,
+  .admin-card,
+  .sheet,
+  .pitch {
+    contain: layout paint style;
+  }
+
+  /* Ralentit moins le scroll en limitant le smoothing */
+  html {
+    scroll-behavior: auto;
+  }
+
+  /* Désactive le lissage d'images coûteux */
+  img {
+    image-rendering: auto;
   }
 }
 

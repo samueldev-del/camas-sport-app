@@ -65,6 +65,19 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    target: 'es2020',
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) {
+            return 'react';
+          }
+        },
+      },
+    },
+  },
   server: {
     host: true,                     // accessible depuis le téléphone (même Wi-Fi)
     proxy: {

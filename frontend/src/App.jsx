@@ -399,12 +399,7 @@ export default function App() {
   };
 
   const handleAccountChipClick = () => {
-    if (isMobileProfileMenu) {
-      setMobileProfileMenuOpen((open) => !open);
-      return;
-    }
-
-    setTab('account');
+    setMobileProfileMenuOpen((open) => !open);
   };
 
   const acceptCookies = () => {
@@ -541,7 +536,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isMobileProfileMenu || !mobileProfileMenuOpen) return;
+    if (!mobileProfileMenuOpen) return;
 
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') setMobileProfileMenuOpen(false);
@@ -549,7 +544,7 @@ export default function App() {
 
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isMobileProfileMenu, mobileProfileMenuOpen]);
+  }, [mobileProfileMenuOpen]);
 
   const visibleTabs = TABS_BASE; // on les affiche toutes — caisse devient verrouillée si non-admin
 
@@ -559,7 +554,7 @@ export default function App() {
         {/* HEADER */}
         <header className="header">
           <div className="logo-circle">
-            <img src={logoCamas} alt="CAMAS e.V." />
+            <img src={logoCamas} alt="CAMAS e.V." width="64" height="64" decoding="async" fetchPriority="high" />
           </div>
 
           <div className="header-meta">
@@ -598,7 +593,7 @@ export default function App() {
               ))}
             </div>
 
-            <button className={`account-chip ${tab === 'account' || mobileProfileMenuOpen ? 'active' : ''} ${isMobileProfileMenu ? 'mobile-menu-trigger' : ''} ${isMobileProfileMenu && !currentUser ? 'guest-menu-trigger' : ''}`} onClick={handleAccountChipClick}>
+            <button className={`account-chip ${tab === 'account' || mobileProfileMenuOpen ? 'active' : ''} mobile-menu-trigger ${isMobileProfileMenu && !currentUser ? 'guest-menu-trigger' : ''}`} onClick={handleAccountChipClick}>
               <span className="account-chip-avatar-shell">
                 <img className="account-chip-avatar" src={profileAvatarSrc} alt={tr('auth_profile')} />
               </span>
@@ -813,7 +808,7 @@ export default function App() {
         <AdminModal tr={tr} onClose={() => setAdminModalOpen(false)} onSubmit={onAdminLogin} />
       )}
 
-      {mobileProfileMenuOpen && isMobileProfileMenu && (
+      {mobileProfileMenuOpen && (
         <MobileProfileMenu
           tr={tr}
           currentUser={currentUser}
@@ -1777,7 +1772,7 @@ function PlayersPage({ tr, isAdmin, currentUser, players, attendees, onReload, f
                   <tr key={p.id}>
                     <td data-label={tr('th_name')}>
                       <div className="player-identity">
-                        <img className="player-avatar" src={avatarSrc} alt={p.name} />
+                        <img className="player-avatar" src={avatarSrc} alt={p.name} loading="lazy" decoding="async" />
                         <div className="player-meta">
                           <span>{p.name}</span>
                           {isCurrentUser ? <span className="mini-tag self-tag">{tr('auth_me_badge')}</span> : null}
@@ -3033,7 +3028,7 @@ function WinningGallerySection({ tr, lang, gallery }) {
             return (
               <article key={g.id} className="gallery-card">
                 <div className="gallery-photo">
-                  <img src={g.photo_url} alt={`${tr('gallery_winner')} ${fmtShortDate(g.match_date, lang)}`} loading="lazy" />
+                  <img src={g.photo_url} alt={`${tr('gallery_winner')} ${fmtShortDate(g.match_date, lang)}`} loading="lazy" decoding="async" />
                 </div>
                 <div className="gallery-meta">
                   <span className="gallery-date">{fmtShortDate(g.match_date, lang)}</span>
